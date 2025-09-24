@@ -1,10 +1,10 @@
-/* ====================== 初始化用户信息 ====================== */
+/* ====================== 1.初始化用户信息 ====================== */
 window.currentUserUUID = localStorage.getItem("currentUserUUID");
 let ordering = false;
 let completing = false;
 let cooldownTimer = null;
 
-/* ====================== 工具函数 ====================== */
+/* ====================== 2.工具函数 ====================== */
 function setOrderBtnDisabled(disabled, reason = "", cooldownText = "") {
   const btn = document.getElementById("autoOrderBtn");
   if (btn) {
@@ -35,37 +35,24 @@ function formatTime(sec) {
   return `${h}:${m}:${s}`;
 }
 
-/* ====================== 匹配倒计时 ====================== */
-function startMatchingCountdown(order, delaySec) {
-  const endTime = Date.now() + delaySec * 1000;
-  localStorage.setItem("matchingEndTime", endTime);
-  localStorage.setItem("matchingProductId", order.product_id);
+/* ====================== 3.轮次倒计时 ====================== */
+function startRoundCountdown(roundEndTime) {
+  const endTime = new Date(roundEndTime).getTime();
 
   const tick = () => {
     const remaining = Math.ceil((endTime - Date.now()) / 1000);
     if (remaining > 0) {
-      setMatchingState(true);
+      setOrderBtnDisabled(true, `本轮冷却中`, `冷却剩余时间：${formatTime(remaining)}`);
       requestAnimationFrame(tick);
     } else {
-      setMatchingState(false);
-      localStorage.removeItem("matchingEndTime");
-      localStorage.removeItem("matchingProductId");
-      renderLastOrder(order, order.coins_after);
+      setOrderBtnDisabled(false);
+      refreshAll(); // 轮次结束刷新订单和 Coins
     }
   };
   tick();
 }
 
-/* ====================== 显示/隐藏匹配状态 ====================== */
-function setMatchingState(isMatching) {
-  const gifEl = document.getElementById("matchingGif");
-  const btn = document.getElementById("autoOrderBtn");
-  if (gifEl) gifEl.style.display = isMatching ? "block" : "none";
-  if (btn) btn.disabled = isMatching;
-  if (btn) btn.textContent = isMatching ? "🎲 正在匹配..." : "🎲 一键刷单";
-}
-
-/* ====================== 渲染最近订单 ====================== */
+/* ====================== 4.显示最近订单和轮次 ====================== */
 function renderLastOrder(order, coinsRaw) {
   const el = document.getElementById("orderResult");
   if (!el || !order) return;
@@ -73,14 +60,16 @@ function renderLastOrder(order, coinsRaw) {
   const coins = coinsRaw != null ? Number(coinsRaw) : 0;
   const price = Number(order.total_price) || 0;
   const profit = Number(order.profit) || 0;
+  const roundInfo = order.current_order_in_round != null ? `${order.current_order_in_round}/${order.total_orders_in_round}单` : "";
 
   let html = `
     <h3>✅ 最近一次订单</h3>
-    <p>商品：${order.name || "未知商品"}</p>
+    <p>轮次：${roundInfo}</p>
+    <p>商品：${order.name || order.product_name || "未知商品"}</p>
     <p>价格：¥${price.toFixed(2)}</p>
     <p>收入：+¥${profit.toFixed(2)}</p>
     <p>状态：${order.status === "completed" ? "✅ 已完成" : "⏳ 待完成"}</p>
-    <p>时间：${new Date().toLocaleString()}</p>
+    <p>时间：${new Date(order.created_at || Date.now()).toLocaleString()}</p>
     <p>当前金币：¥${coins.toFixed(2)}</p>
   `;
 
@@ -98,11 +87,12 @@ function renderLastOrder(order, coinsRaw) {
     compBtn.addEventListener("click", async () => {
       compBtn.disabled = true;
       await completeOrder(order.order_id);
+      await autoOrder(); // 完成订单后自动下单下一单
     });
   }
 }
 
-/* ====================== 自动下单 ====================== */
+/* ====================== 5.自动下单 ====================== */
 async function autoOrder() {
   if (!window.currentUserUUID) {
     alert("请先登录！");
@@ -119,23 +109,26 @@ async function autoOrder() {
     if (!data || !data.length) throw new Error("下单失败");
 
     const order = data[0];
-    const delaySec = Math.ceil((new Date(order.match_end_time) - new Date(order.match_start_time)) / 1000);
 
-    startMatchingCountdown({
+    renderLastOrder({
       order_id: order.order_id,
       product_id: order.product_id,
-      name: order.product_name,
+      product_name: order.product_name,
       total_price: order.total_price,
       profit: order.profit,
       round_id: order.round_id,
       status: "pending",
-      coins_after: order.coins_after
-    }, delaySec);
+      current_order_in_round: order.current_order_in_round,
+      total_orders_in_round: order.total_orders_in_round,
+      created_at: order.match_start_time
+    }, order.coins_after);
 
     updateCoinsUI(order.coins_after);
 
-    if (order.cooldown) {
-      startCooldownTimer(new Date(order.match_end_time), "本轮完成，冷却中...");
+    // 如果轮次已满或者结束，启动轮次冷却
+    const remainingOrders = order.total_orders_in_round - order.current_order_in_round;
+    if (remainingOrders <= 0) {
+      startRoundCountdown(order.match_end_time);
     }
 
   } catch (e) {
@@ -145,7 +138,7 @@ async function autoOrder() {
   }
 }
 
-/* ====================== 完成订单 ====================== */
+/* ====================== 6.完成订单 ====================== */
 async function completeOrder(orderId) {
   if (completing) return;
   completing = true;
@@ -156,10 +149,9 @@ async function completeOrder(orderId) {
     if (!data || !data.length) throw new Error("完成订单失败");
 
     const order = data[0];
-
     renderLastOrder({
       order_id: order.order_id,
-      name: "商品",
+      name: order.product_name || "商品",
       total_price: order.total_price,
       profit: order.profit,
       status: order.status
@@ -174,36 +166,14 @@ async function completeOrder(orderId) {
   }
 }
 
-/* ====================== 冷却倒计时 ====================== */
-function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待") {
-  if (!nextAllowed) return;
-
-  const tick = () => {
-    const sec = Math.ceil((new Date(nextAllowed).getTime() - Date.now()) / 1000);
-    if (sec <= 0) {
-      clearInterval(cooldownTimer);
-      setOrderBtnDisabled(false, "", "");
-      refreshAll();
-    } else {
-      setOrderBtnDisabled(true, `${messagePrefix} ${formatTime(sec)}`, `冷却剩余时间：${formatTime(sec)}`);
-    }
-  };
-
-  tick();
-  if (cooldownTimer) clearInterval(cooldownTimer);
-  cooldownTimer = setInterval(tick, 1000);
-}
-
-/* ====================== 刷新页面状态 ====================== */
+/* ====================== 7.刷新 Coins & 最近订单 ====================== */
 async function refreshAll() {
   await loadCoinsOrderPage();
   await loadLastOrder();
 }
 
-/* ====================== 加载 Coins & Balance ====================== */
 async function loadCoinsOrderPage() {
   if (!window.currentUserUUID) return;
-
   const { data, error } = await supabaseClient
     .from("users")
     .select("coins, balance")
@@ -217,13 +187,12 @@ async function loadCoinsOrderPage() {
   }
 }
 
-/* ====================== 加载最近订单 ====================== */
 async function loadLastOrder() {
   if (!window.currentUserUUID) return;
 
-  const { data: orders, error } = await supabaseClient
+  const { data: orders } = await supabaseClient
     .from("orders")
-    .select("id, total_price, profit, status, created_at, product_id")
+    .select("id, product_id, status, total_price, profit, round_id, created_at")
     .eq("user_uuid", window.currentUserUUID)
     .order("created_at", { ascending: false })
     .limit(1);
@@ -234,33 +203,21 @@ async function loadLastOrder() {
     .eq("uuid", window.currentUserUUID)
     .single();
 
-  if (orders?.length) renderLastOrder({
-    order_id: orders[0].id,
-    name: "商品",
-    total_price: orders[0].total_price,
-    profit: orders[0].profit,
-    status: orders[0].status
-  }, user?.coins);
-  else document.getElementById("orderResult").innerHTML = "";
-}
-
-/* ====================== 页面事件绑定 ====================== */
-document.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("autoOrderBtn")?.addEventListener("click", autoOrder);
-  restoreMatchingIfAny();
-  refreshAll();
-});
-
-/* ====================== 恢复匹配状态 ====================== */
-function restoreMatchingIfAny() {
-  const matchingEnd = Number(localStorage.getItem("matchingEndTime"));
-  const productId = localStorage.getItem("matchingProductId");
-
-  if (matchingEnd && productId && matchingEnd > Date.now()) {
-    const delaySec = Math.ceil((matchingEnd - Date.now()) / 1000);
-    startMatchingCountdown({ id: null, name: "商品" }, delaySec);
+  if (orders?.length) {
+    renderLastOrder({
+      order_id: orders[0].id,
+      name: "商品",
+      total_price: orders[0].total_price,
+      profit: orders[0].profit,
+      status: orders[0].status
+    }, user?.coins);
   } else {
-    localStorage.removeItem("matchingEndTime");
-    localStorage.removeItem("matchingProductId");
+    document.getElementById("orderResult").innerHTML = "";
   }
 }
+
+/* ====================== 8.页面事件绑定 ====================== */
+document.addEventListener("DOMContentLoaded", () => {
+  document.getElementById("autoOrderBtn")?.addEventListener("click", autoOrder);
+  refreshAll();
+});
