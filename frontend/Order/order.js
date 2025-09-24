@@ -1,10 +1,10 @@
-/* ====================== 1.初始化用户信息 ====================== */
+/* ====================== 初始化用户信息 ====================== */
 window.currentUserUUID = localStorage.getItem("currentUserUUID");
 let ordering = false;
 let completing = false;
 let cooldownTimer = null;
 
-/* ====================== 2.工具函数 ====================== */
+/* ====================== 工具函数 ====================== */
 function setOrderBtnDisabled(disabled, reason = "", cooldownText = "") {
   const btn = document.getElementById("autoOrderBtn");
   if (btn) {
@@ -35,7 +35,7 @@ function formatTime(sec) {
   return `${h}:${m}:${s}`;
 }
 
-/* ====================== 3.匹配倒计时 ====================== */
+/* ====================== 匹配倒计时 ====================== */
 function startMatchingCountdown(order, delaySec) {
   const endTime = Date.now() + delaySec * 1000;
   localStorage.setItem("matchingEndTime", endTime);
@@ -56,7 +56,7 @@ function startMatchingCountdown(order, delaySec) {
   tick();
 }
 
-/* ====================== 4.显示/隐藏匹配状态 ====================== */
+/* ====================== 显示/隐藏匹配状态 ====================== */
 function setMatchingState(isMatching) {
   const gifEl = document.getElementById("matchingGif");
   const btn = document.getElementById("autoOrderBtn");
@@ -65,7 +65,7 @@ function setMatchingState(isMatching) {
   if (btn) btn.textContent = isMatching ? "🎲 正在匹配..." : "🎲 一键刷单";
 }
 
-/* ====================== 5.渲染最近订单 ====================== */
+/* ====================== 渲染最近订单 ====================== */
 function renderLastOrder(order, coinsRaw) {
   const el = document.getElementById("orderResult");
   if (!el || !order) return;
@@ -102,7 +102,7 @@ function renderLastOrder(order, coinsRaw) {
   }
 }
 
-/* ====================== 6.自动下单 ====================== */
+/* ====================== 自动下单 ====================== */
 async function autoOrder() {
   if (!window.currentUserUUID) {
     alert("请先登录！");
@@ -145,7 +145,7 @@ async function autoOrder() {
   }
 }
 
-/* ====================== 7.完成订单 ====================== */
+/* ====================== 完成订单 ====================== */
 async function completeOrder(orderId) {
   if (completing) return;
   completing = true;
@@ -174,7 +174,7 @@ async function completeOrder(orderId) {
   }
 }
 
-/* ====================== 8.冷却倒计时 ====================== */
+/* ====================== 冷却倒计时 ====================== */
 function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待") {
   if (!nextAllowed) return;
 
@@ -194,13 +194,13 @@ function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待"
   cooldownTimer = setInterval(tick, 1000);
 }
 
-/* ====================== 9.刷新页面状态 ====================== */
+/* ====================== 刷新页面状态 ====================== */
 async function refreshAll() {
   await loadCoinsOrderPage();
   await loadLastOrder();
 }
 
-/* ====================== 10.加载 Coins & Balance ====================== */
+/* ====================== 加载 Coins & Balance ====================== */
 async function loadCoinsOrderPage() {
   if (!window.currentUserUUID) return;
 
@@ -217,7 +217,7 @@ async function loadCoinsOrderPage() {
   }
 }
 
-/* ====================== 11.加载最近订单 ====================== */
+/* ====================== 加载最近订单 ====================== */
 async function loadLastOrder() {
   if (!window.currentUserUUID) return;
 
@@ -244,14 +244,14 @@ async function loadLastOrder() {
   else document.getElementById("orderResult").innerHTML = "";
 }
 
-/* ====================== 12.页面事件绑定 ====================== */
+/* ====================== 页面事件绑定 ====================== */
 document.addEventListener("DOMContentLoaded", () => {
   document.getElementById("autoOrderBtn")?.addEventListener("click", autoOrder);
   restoreMatchingIfAny();
   refreshAll();
 });
 
-/* ====================== 13.恢复匹配状态 ====================== */
+/* ====================== 恢复匹配状态 ====================== */
 function restoreMatchingIfAny() {
   const matchingEnd = Number(localStorage.getItem("matchingEndTime"));
   const productId = localStorage.getItem("matchingProductId");
