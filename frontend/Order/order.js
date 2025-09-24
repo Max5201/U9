@@ -35,7 +35,7 @@ function formatTime(sec) {
   return `${h}:${m}:${s}`;
 }
 
-/* ====================== 3.匹配倒计时函数 ====================== */
+/* ====================== 3.匹配倒计时 ====================== */
 function startMatchingCountdown(order, delaySec) {
   const endTime = Date.now() + delaySec * 1000;
   localStorage.setItem("matchingEndTime", endTime);
@@ -56,7 +56,7 @@ function startMatchingCountdown(order, delaySec) {
   tick();
 }
 
-/* ====================== 4.显示/隐藏匹配状态 & GIF ====================== */
+/* ====================== 4.显示/隐藏匹配状态 ====================== */
 function setMatchingState(isMatching) {
   const gifEl = document.getElementById("matchingGif");
   const btn = document.getElementById("autoOrderBtn");
