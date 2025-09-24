@@ -3,7 +3,6 @@ window.currentUserUUID = localStorage.getItem("currentUserUUID");
 let ordering = false;
 let completing = false;
 let cooldownTimer = null;
-let currentRound = { index: 1, total: 5, startTime: null, durationSec: 180 };
 
 /* ====================== 工具函数 ====================== */
 function setOrderBtnDisabled(disabled, reason = "", cooldownText = "") {
@@ -105,20 +104,18 @@ async function autoOrder() {
     if (!data || !data.length) throw new Error("下单失败");
 
     const order = data[0];
-    order.current_order_in_round = currentRound.index;
-    order.total_orders_in_round = currentRound.total;
 
-    // 模拟匹配倒计时 5 秒
-    startMatchingCountdown(order, 5);
+    // 前端倒计时使用服务器返回的匹配时间
+    const matchSec = order.match_sec || 5;
 
+    startMatchingCountdown(order, matchSec);
     updateCoinsUI(order.coins_after);
 
-    currentRound.index++;
-    if (currentRound.index > currentRound.total) {
-      // 开启轮次冷却 3 分钟
-      startRoundCountdown(new Date(Date.now() + currentRound.durationSec * 1000));
-      currentRound.index = 1; // 下一轮
+    // 轮次冷却处理
+    if (order.round_cooldown_until) {
+      startRoundCountdown(new Date(order.round_cooldown_until));
     }
+
   } catch (e) {
     alert(e.message || "下单失败");
   } finally {
@@ -132,7 +129,6 @@ async function completeOrder(orderId) {
   completing = true;
 
   try {
-    // 明确调用 uuid 版本
     const { data, error } = await supabaseClient.rpc("complete_order", { p_order_id: orderId });
     if (error) throw error;
     if (!data || !data.length) throw new Error("完成订单失败");
@@ -156,17 +152,19 @@ async function completeOrder(orderId) {
 
 /* ====================== 轮次倒计时 ====================== */
 function startRoundCountdown(endTime) {
+  if (cooldownTimer) clearInterval(cooldownTimer);
   const tick = () => {
     const remaining = Math.ceil((new Date(endTime).getTime() - Date.now()) / 1000);
     if (remaining > 0) {
       setOrderBtnDisabled(true, "本轮冷却中", `冷却剩余时间：${formatTime(remaining)}`);
-      requestAnimationFrame(tick);
     } else {
       setOrderBtnDisabled(false);
+      clearInterval(cooldownTimer);
       refreshAll();
     }
   };
   tick();
+  cooldownTimer = setInterval(tick, 1000);
 }
 
 /* ====================== 刷新 Coins & 最近订单 ====================== */
@@ -195,7 +193,8 @@ async function loadLastOrder() {
     product_name: orders[0].product_name,
     total_price: orders[0].total_price,
     profit: orders[0].profit,
-    status: orders[0].status
+    status: orders[0].status,
+    coins_after: orders[0].coins_after
   });
 }
 
