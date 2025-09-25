@@ -391,6 +391,3 @@ async function confirmExchange() {
     if (confirmBtn) confirmBtn.disabled = false;
   }
 }
-
-
-
