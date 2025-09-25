@@ -67,8 +67,7 @@ async function autoOrder() {
     await loadRoundConfig();
 
     // 调用 RPC 自动下单
-    const { data, error } = await supabaseClient
-      .rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
+    const { data, error } = await supabaseClient.rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
 
     if (error) throw error;
     if (!data || data.length === 0) {
@@ -100,7 +99,7 @@ async function autoOrder() {
       status: order.cooldown ? "pending" : "completed",
       created_at: new Date(),
       products: { name: order.product_name, profit: order.profit / order.total_price }
-    }, order.coins_after || 0);
+    }, order.coins_after);
 
     await updateRoundProgress();
 
