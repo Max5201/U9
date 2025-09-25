@@ -1,13 +1,3 @@
-// ----------------------
-// Order 页面逻辑
-// ----------------------
-
-// 取本地登录用户
-const user = JSON.parse(localStorage.getItem("user"));
-if (!user) {
-  window.location.href = "/index.html";
-}
-
 const orderPage = document.getElementById("orderPage");
 const orderContainer = document.createElement("div");
 const actionBtn = document.createElement("button");
