@@ -11,7 +11,7 @@ if (userInfoDiv && user) {
     <div class="user-card">
       <h3>${user.username}</h3>
       <p><strong>账号：</strong> ${user.account}</p>
-      <p><strong>余额：</strong> ${user.balance ?? 0} 元</p>
+      <p><strong>余额：</strong> ${user.balance ?? 0}  </p>
     </div>
   `;
 }
