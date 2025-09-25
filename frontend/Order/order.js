@@ -160,11 +160,11 @@ function showModal(contentHtml) {
 }
 
 /* ======================
-   自动下单（调用 Supabase Edge Function）
+   自动下单（调用受保护 Edge Function）
    ====================== */
 async function autoOrder() {
   if (!window.currentUserId) { 
-    alert("请先登录！");
+    alert("请先登录！"); 
     return; 
   }
   if (ordering) return;
@@ -172,24 +172,30 @@ async function autoOrder() {
   setOrderBtnDisabled(true, "匹配中…");
 
   try {
+    // 获取当前用户 session
+    const { data: { session }, error: sessionErr } = await supabaseClient.auth.getSession();
+    if (sessionErr || !session) throw new Error("获取用户信息失败，请重新登录");
+
+    const accessToken = session.access_token; // 用户的 JWT Token
+
     const res = await fetch(
-      'https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action', 
+      'https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action',
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}` // 使用用户 token
+        },
         body: JSON.stringify({ user_id: window.currentUserId })
       }
     );
 
-    // 检查 HTTP 状态
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || `请求失败: ${res.status}`);
     }
 
     const data = await res.json();
-
-    // 渲染订单和更新金币
     renderLastOrder(data.order, data.newCoins);
     updateCoinsUI(data.newCoins);
     await checkPendingLock();
