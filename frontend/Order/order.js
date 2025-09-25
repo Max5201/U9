@@ -136,10 +136,10 @@ async function completeOrder(order, currentCoinsRaw) {
 }
 
 /* ======================
-   自动下单（调用 Edge Function）
+   自动下单
    ====================== */
 async function autoOrder() {
-  if (!window.currentUserId || !window.accessToken) { 
+  if (!window.currentUserId) { 
     alert("请先登录！"); 
     return; 
   }
@@ -152,10 +152,7 @@ async function autoOrder() {
       "https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${window.accessToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: window.currentUserId })
       }
     );
