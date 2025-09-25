@@ -1,4 +1,3 @@
-// frontend/Order/order.js
 (function() {
   let user = JSON.parse(localStorage.getItem('user'));
   if (!user || !user.uuid) {
@@ -8,13 +7,33 @@
   const startBtn = document.getElementById('startBtn');
   const orderInfo = document.getElementById('orderInfo');
 
-  // 创建订单卡片容器
   const orderCardContainer = document.createElement('div');
   orderCardContainer.id = 'orderCardContainer';
   startBtn.insertAdjacentElement('afterend', orderCardContainer);
 
+  const userStatusDiv = document.createElement('div');
+  userStatusDiv.id = 'userStatusDiv';
+  orderCardContainer.insertAdjacentElement('beforebegin', userStatusDiv);
+
   let roundsConfig = null;
   let isMatching = false;
+  let lastOrder = null;
+
+  // -------------------------
+  // 渲染用户状态
+  // -------------------------
+  function renderUserStatus() {
+    userStatusDiv.innerHTML = `
+      <p><strong>Coins:</strong> ${user.coins ?? 0}</p>
+      <p><strong>轮次:</strong> ${user.current_round_count ?? 0}/${roundsConfig.orders_per_round ?? 5}</p>
+      ${lastOrder ? `
+        <p><strong>最近订单:</strong></p>
+        <p>产品: ${lastOrder.name}</p>
+        <p>价格: ${lastOrder.price}</p>
+        <p>利润: ${lastOrder.profit}</p>
+      ` : ''}
+    `;
+  }
 
   // -------------------------
   // 获取轮次配置
@@ -32,10 +51,11 @@
     }
     roundsConfig = data;
     checkStartAvailability();
+    renderUserStatus();
   }
 
   // -------------------------
-  // 检查 START 是否可用（Coins / 冷却）
+  // 检查 START 是否可用
   // -------------------------
   function checkStartAvailability() {
     const now = new Date();
@@ -62,12 +82,12 @@
   startBtn.addEventListener('click', async () => {
     if (!roundsConfig) return;
 
-    // START → GO
     if (startBtn.textContent === 'START') {
       user.current_round_count = 0;
       localStorage.setItem('user', JSON.stringify(user));
       startBtn.textContent = 'GO';
       orderInfo.textContent = '';
+      renderUserStatus();
       return;
     }
 
@@ -81,7 +101,6 @@
     startBtn.disabled = true;
     orderInfo.textContent = '正在匹配产品...';
 
-    // 获取所有产品
     const { data: products, error: prodErr } = await supabaseClient
       .from('products')
       .select('*');
@@ -96,7 +115,6 @@
     const randomProduct = products[Math.floor(Math.random() * products.length)];
     const matchSeconds = roundsConfig.match_seconds || 30;
 
-    // 匹配倒计时
     let remainingTime = matchSeconds;
     orderInfo.textContent = `匹配中... ${remainingTime} 秒`;
     const countdown = setInterval(() => {
@@ -105,13 +123,10 @@
       if (remainingTime <= 0) clearInterval(countdown);
     }, 1000);
 
-    // 等待匹配时间
     setTimeout(async () => {
       clearInterval(countdown);
 
       const newCoins = Number(user.coins) - Number(randomProduct.price);
-
-      // 更新 Coins
       const { error: updateErr } = await supabaseClient
         .from('users')
         .update({ coins: newCoins })
@@ -119,7 +134,6 @@
 
       if (updateErr) {
         orderInfo.textContent = '扣除 Coins 失败';
-        console.error(updateErr);
         isMatching = false;
         startBtn.disabled = false;
         return;
@@ -127,9 +141,10 @@
 
       user.coins = newCoins;
       localStorage.setItem('user', JSON.stringify(user));
+      lastOrder = randomProduct;
 
-      // 渲染订单卡片
       renderOrderCard(randomProduct);
+      renderUserStatus();
 
       isMatching = false;
       startBtn.disabled = false;
@@ -157,12 +172,10 @@
         const updatedCoins = Number(user.coins) + returnCoins;
         const newRoundCount = user.current_round_count + 1;
 
-        // 更新数据库
         const updates = {
           coins: updatedCoins,
           current_round_count: newRoundCount
         };
-
         if (newRoundCount >= roundsConfig.orders_per_round) {
           updates.last_round_completed = new Date();
         }
@@ -174,18 +187,18 @@
 
         if (finishErr) console.error(finishErr);
 
-        // 更新本地 user
         user.coins = updatedCoins;
         user.current_round_count = newRoundCount;
         if (newRoundCount >= roundsConfig.orders_per_round) {
           user.last_round_completed = updates.last_round_completed;
         }
         localStorage.setItem('user', JSON.stringify(user));
+        lastOrder = product;
 
         orderCardContainer.innerHTML = '';
         orderInfo.textContent = `完成订单 ${user.current_round_count}/${roundsConfig.orders_per_round}`;
+        renderUserStatus();
 
-        // 检查轮次结束
         if (user.current_round_count >= roundsConfig.orders_per_round) {
           startBtn.disabled = true;
           startBtn.textContent = 'START';
@@ -204,6 +217,7 @@
     const interval = setInterval(() => {
       remaining--;
       orderInfo.textContent = `冷却中，剩余 ${remaining} 秒`;
+      renderUserStatus();
       if (remaining <= 0) {
         clearInterval(interval);
         user.current_round_count = 0;
@@ -213,6 +227,5 @@
     }, 1000);
   }
 
-  // 初始化
   fetchRoundsConfig();
 })();
