@@ -1,28 +1,18 @@
 // 检查登录状态
 const user = JSON.parse(localStorage.getItem('user'));
 if (!user) {
-  window.location.href = 'index.html'; // 根目录 index.html
-} else {
-  const userInfoDiv = document.getElementById('userInfo');
-  if(userInfoDiv){
-    userInfoDiv.innerHTML = `
-      <p>用户名: ${user.username}</p>
-      <p>账号: ${user.account}</p>
-      <p>金币: ${user.coins}</p>
-      <p>余额: ${user.balance}</p>
-      <p>注册日期: ${user.created}</p>
-    `;
-  }
+  window.location.href = '/index.html'; // 根目录 index.html
 }
 
 // 退出登录
 const logoutBtn = document.getElementById('logoutBtn');
-if(logoutBtn){
+if (logoutBtn) {
   logoutBtn.addEventListener('click', () => {
     localStorage.removeItem('user');
-    window.location.href = 'index.html';
+    window.location.href = '/index.html'; // 根目录 index.html
   });
 }
+
 
 // 页面切换逻辑
 const buttons = document.querySelectorAll('.bottom-nav button');
