@@ -34,7 +34,14 @@ async function fetchUserInfo() {
       return;
     }
 
-    user = data; // 更新全局 user
+    // 保留 uuid，更新可变字段
+    user = {
+      uuid: user.uuid,
+      username: data.username,
+      account: data.account,
+      balance: data.balance,
+      coins: data.coins
+    };
     localStorage.setItem('user', JSON.stringify(user));
     renderUserInfo(user);
   } catch (err) {
@@ -50,7 +57,14 @@ fetchUserInfo();
 supabaseClient
   .from(`users:uuid=eq.${user.uuid}`)
   .on('UPDATE', payload => {
-    user = payload.new;
+    // 只更新可变字段，保留 uuid
+    user = {
+      uuid: user.uuid,
+      username: payload.new.username ?? user.username,
+      account: payload.new.account ?? user.account,
+      balance: payload.new.balance ?? user.balance,
+      coins: payload.new.coins ?? user.coins
+    };
     localStorage.setItem('user', JSON.stringify(user));
     renderUserInfo(user);
   })
