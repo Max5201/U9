@@ -8,7 +8,6 @@
 
   <!-- Supabase SDK -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <!-- 全局 Supabase 初始化 -->
   <script src="supabaseClient.js"></script>
 </head>
 <body>
@@ -24,11 +23,9 @@
 
     <!-- 登录 -->
     <div id="loginForm" class="form-container">
-      <div class="field">
-        <input type="text" id="loginUsername" placeholder="Username" autocomplete="username" />
-      </div>
-      <div class="field password-wrapper">
-        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
+      <input type="text" id="loginUsername" placeholder="Username" />
+      <div class="password-wrapper">
+        <input type="password" id="loginPassword" placeholder="Password" />
         <button type="button" class="toggle-password" data-target="loginPassword">👁️</button>
       </div>
       <div id="loginMsg" class="form-msg"></div>
@@ -37,26 +34,23 @@
 
     <!-- 注册 -->
     <div id="registerForm" class="form-container hidden">
-      <div class="field">
-        <input type="text" id="regUsername" placeholder="Username" autocomplete="username" />
-      </div>
-      <div class="field password-wrapper">
-        <input type="password" id="regPassword" placeholder="Password" autocomplete="new-password" />
+      <input type="text" id="regUsername" placeholder="Username" />
+      <div class="password-wrapper">
+        <input type="password" id="regPassword" placeholder="Password" />
         <button type="button" class="toggle-password" data-target="regPassword">👁️</button>
       </div>
-      <div class="field password-wrapper">
-        <input type="password" id="regConfirmPassword" placeholder="Confirm Password" autocomplete="new-password" />
+      <div class="password-wrapper">
+        <input type="password" id="regConfirmPassword" placeholder="Confirm Password" />
         <button type="button" class="toggle-password" data-target="regConfirmPassword">👁️</button>
       </div>
       <label class="agreement">
-        <input type="checkbox" id="agreeTerms" />
-        <span>I agree to the terms</span>
+        <input type="checkbox" id="agreeTerms" /> I agree to the terms
       </label>
       <div id="registerMsg" class="form-msg"></div>
       <button id="registerBtn" class="primary-btn">Register</button>
     </div>
   </div>
 
-  <script src="index.js" type="module"></script>
+  <script src="index.js"></script>
 </body>
 </html>
