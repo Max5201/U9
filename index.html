@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -14,57 +13,30 @@
 </head>
 <body>
   <div class="container">
-    <h1 class="title">Welcome</h1>
-    <p class="desc">Please register or login below:</p>
+    <h1>U9 平台</h1>
 
-    <!-- Tab -->
-    <div class="tab-container">
-      <button id="showLogin" class="tab-btn active">Login</button>
-      <button id="showRegister" class="tab-btn">Register</button>
+    <div class="tab-buttons">
+      <button id="login-tab" class="active">登录</button>
+      <button id="register-tab">注册</button>
     </div>
 
-    <!-- 登录 -->
-    <div id="loginForm" class="form-container">
-      <div class="field">
-        <input type="text" id="loginUsername" placeholder="Username" autocomplete="username" />
-      </div>
+    <!-- 登录表单 -->
+    <form id="login-form" class="form active">
+      <input type="text" id="login-username" placeholder="用户名" required />
+      <input type="password" id="login-password" placeholder="密码" required />
+      <button type="submit">登录</button>
+    </form>
 
-      <div class="field password-wrapper">
-        <input type="password" id="loginPassword" placeholder="Password" autocomplete="current-password" />
-        <button type="button" class="toggle-password" data-target="loginPassword" aria-label="toggle password">👁️</button>
-      </div>
+    <!-- 注册表单 -->
+    <form id="register-form" class="form">
+      <input type="text" id="register-username" placeholder="用户名" required />
+      <input type="password" id="register-password" placeholder="密码" required />
+      <button type="submit">注册</button>
+    </form>
 
-      <div id="loginMsg" class="form-msg"></div>
-      <button id="loginBtn" class="primary-btn">Login</button>
-    </div>
-
-    <!-- 注册 -->
-    <div id="registerForm" class="form-container hidden">
-      <div class="field">
-        <input type="text" id="regUsername" placeholder="Username" autocomplete="username" />
-      </div>
-
-      <div class="field password-wrapper">
-        <input type="password" id="regPassword" placeholder="Password" autocomplete="new-password" />
-        <button type="button" class="toggle-password" data-target="regPassword" aria-label="toggle password">👁️</button>
-      </div>
-
-      <div class="field password-wrapper">
-        <input type="password" id="regConfirmPassword" placeholder="Confirm Password" autocomplete="new-password" />
-        <button type="button" class="toggle-password" data-target="regConfirmPassword" aria-label="toggle password">👁️</button>
-      </div>
-
-      <label class="agreement">
-        <input type="checkbox" id="agreeTerms" />
-        <span>I agree to the terms</span>
-      </label>
-
-      <div id="registerMsg" class="form-msg"></div>
-      <button id="registerBtn" class="primary-btn">Register</button>
-    </div>
+    <div id="message"></div>
   </div>
 
-  <!-- 业务逻辑 -->
   <script src="index.js"></script>
 </body>
 </html>
