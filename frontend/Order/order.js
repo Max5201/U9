@@ -35,7 +35,7 @@ function updateCoinsUI(coinsRaw) {
    一键刷单
    ====================== */
 async function autoOrder() {
-  if (!window.currentUserId || !window.accessToken) { 
+  if (!window.currentUserId) { 
     alert("请先登录！"); 
     return; 
   }
@@ -44,15 +44,11 @@ async function autoOrder() {
   setOrderBtnDisabled(true, "匹配中…");
 
   try {
-    // 调用 Edge Function 生成订单
     const res = await fetch(
       "https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action",
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${window.accessToken}`
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ user_id: window.currentUserId })
       }
     );
@@ -63,38 +59,9 @@ async function autoOrder() {
     }
 
     const data = await res.json();
-    const order = data.order;
-
-    // 1️⃣ 写入订单数据库
-    await supabaseClient
-      .from("orders")
-      .insert({
-        id: order.id, // Edge Function 返回的 UUID
-        user_id: window.currentUserId,
-        total_price: order.total_price,
-        profit: order.profit,
-        status: order.status,
-        created_at: order.created_at,
-        products: order.products
-      });
-
-    // 2️⃣ 更新用户金币
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
-
-    const newCoins = +(parseFloat(user.coins || 0) + order.total_price + order.profit).toFixed(2);
-
-    await supabaseClient
-      .from("users")
-      .update({ coins: newCoins })
-      .eq("id", window.currentUserId);
-
-    // 3️⃣ 更新前端显示
-    renderLastOrder(order, newCoins);
-    updateCoinsUI(newCoins);
+    renderLastOrder(data.order, data.newCoins);
+    updateCoinsUI(data.newCoins);
+    await checkPendingLock();
     await loadRecentOrders();
 
   } catch (e) {
