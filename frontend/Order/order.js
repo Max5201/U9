@@ -3,6 +3,7 @@
    ====================== */
 window.currentUserId = localStorage.getItem("currentUserId");
 window.currentUsername = localStorage.getItem("currentUser");
+window.accessToken = localStorage.getItem("accessToken"); // JWT
 
 let ordering = false;
 let completing = false;
@@ -37,126 +38,47 @@ function updateCoinsUI(coinsRaw) {
 }
 
 /* ======================
-   渲染最近订单
+   自动下单
    ====================== */
-function renderLastOrder(order, coinsRaw) {
-  const el = document.getElementById("orderResult");
-  if (!el || !order) return;
-
-  const coins = parseFloat(coinsRaw) || 0;
-  const price = parseFloat(order.total_price) || 0;
-  const profit = parseFloat(order.profit) || 0; 
-  const profitRatio = parseFloat(order.products?.profit) || 0; 
-
-  let html = `
-    <h3>✅ 最近一次订单</h3>
-    <p>商品：${order.products?.name || "未知商品"}</p>
-    <p>价格：¥${price.toFixed(2)}</p>
-    <p>利润比例：${profitRatio}</p>
-    <p>收入：+¥${profit.toFixed(2)}</p>
-    <p>状态：${order.status === "completed" ? "✅ 已完成" : "⏳ 待完成"}</p>
-    <p>时间：${new Date(order.created_at).toLocaleString()}</p>
-    <p>当前金币：¥${coins.toFixed(2)}</p>
-  `;
-
-  if (order.status === "pending" && coins >= 0) {
-    html += `<button id="completeOrderBtn">完成订单</button>`;
+async function autoOrder() {
+  if (!window.currentUserId || !window.accessToken) { 
+    alert("请先登录！"); 
+    return; 
   }
-  if (coins < 0) {
-    html += `<p style="color:red;">⚠️ 金币为负，欠款 ¥${Math.abs(coins).toFixed(2)}</p>`;
-  }
-
-  el.innerHTML = html;
-
-  const compBtn = document.getElementById("completeOrderBtn");
-  if (compBtn) {
-    compBtn.addEventListener("click", async () => {
-      compBtn.disabled = true;
-      await completeOrder(order, coins);
-    });
-  }
-}
-
-/* ======================
-   完成订单
-   ====================== */
-async function completeOrder(order, currentCoinsRaw) {
-  if (completing) return;
-  completing = true;
+  if (ordering) return;
+  ordering = true;
+  setOrderBtnDisabled(true, "匹配中…");
 
   try {
-    if (order.status === "completed") return;
+    const res = await fetch(
+      "https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${window.accessToken}`
+        },
+        body: JSON.stringify({ user_id: window.currentUserId })
+      }
+    );
 
-    const currentCoins = parseFloat(currentCoinsRaw) || 0;
-    const price = parseFloat(order.total_price) || 0;
-    const profit = parseFloat(order.profit) || 0;
-    const finalCoins = +(currentCoins + price + profit).toFixed(2);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `请求失败: ${res.status}`);
+    }
 
-    const { error: orderErr } = await supabaseClient
-      .from("orders")
-      .update({ status: "completed" })
-      .eq("id", order.id)
-      .eq("status", "pending");
-    if (orderErr) throw new Error(orderErr.message);
-
-    const { error: coinErr } = await supabaseClient
-      .from("users")
-      .update({ coins: finalCoins })
-      .eq("id", window.currentUserId);
-    if (coinErr) throw new Error(coinErr.message);
-
-    renderLastOrder({ ...order, status: "completed" }, finalCoins);
-    updateCoinsUI(finalCoins);
+    const data = await res.json();
+    renderLastOrder(data.order, data.newCoins);
+    updateCoinsUI(data.newCoins);
     await checkPendingLock();
     await loadRecentOrders();
+
   } catch (e) {
-    alert(e.message || "完成订单失败");
+    alert(e.message);
   } finally {
-    completing = false;
+    ordering = false;
+    setOrderBtnDisabled(false);
   }
-}
-
-/* ======================
-   检查 pending 订单锁定按钮
-   ====================== */
-async function checkPendingLock() {
-  if (!window.currentUserId) return;
-
-  const { data: pend } = await supabaseClient
-    .from("orders")
-    .select("id")
-    .eq("user_id", window.currentUserId)
-    .eq("status", "pending")
-    .limit(1);
-
-  setOrderBtnDisabled(pend?.length > 0, pend?.length > 0 ? "存在未完成订单，请先完成订单" : "");
-}
-
-/* ======================
-   通用 Modal 管理
-   ====================== */
-function showModal(contentHtml) {
-  const modal = document.createElement("div");
-  modal.className = "modal";
-  modal.style.display = "flex";
-  modal.innerHTML = `
-    <div class="modal-content">
-      ${contentHtml}
-      <div class="modal-actions">
-        <button id="closeModalBtn">关闭</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-
-  document.getElementById("closeModalBtn").addEventListener("click", () => modal.remove());
-
-  document.addEventListener("keydown", function escHandler(e) {
-    if (e.key === "Escape") {
-      modal.remove();
-      document.removeEventListener("keydown", escHandler);
-    }
-  });
 }
 
 /* ======================
