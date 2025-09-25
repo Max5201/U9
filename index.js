@@ -24,12 +24,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 生成新的 session_token
   function generateToken() {
-    return crypto.randomUUID(); // v2 JS 原生生成 uuid
+    return crypto.randomUUID(); // 原生生成 UUID
   }
 
-  // ---------------------------
   // 登录
-  // ---------------------------
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = document.getElementById("login-username").value.trim();
@@ -40,9 +38,10 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
+      // 查询用户
       const { data, error } = await supabaseClient
         .from("users")
-        .select("uuid, username, account, balance, coins")
+        .select("uuid, username, account, balance, coins, session_token")
         .eq("username", username)
         .eq("password", password)
         .single();
@@ -55,7 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // 生成新的 session_token
       const newToken = generateToken();
 
-      // 更新数据库 session_token
+      // 更新 session_token
       const { error: updateError } = await supabaseClient
         .from("users")
         .update({ session_token: newToken })
@@ -67,7 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // 保存到 localStorage
+      // 保存本地登录信息
       localStorage.setItem(
         "user",
         JSON.stringify({ ...data, session_token: newToken })
@@ -80,9 +79,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // ---------------------------
   // 注册
-  // ---------------------------
   registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = document.getElementById("register-username").value.trim();
@@ -108,11 +105,22 @@ document.addEventListener("DOMContentLoaded", () => {
       // 生成 session_token
       const newToken = generateToken();
 
-      // 插入新用户，触发器会自动生成 account
+      // 插入用户，不用 .select()，触发器生成 account
+      const { data: inserted, error: insertError } = await supabaseClient
+        .from("users")
+        .insert([{ username, password, session_token: newToken }]);
+
+      if (insertError || !inserted || !inserted[0]) {
+        console.error(insertError);
+        messageEl.textContent = "注册失败，请稍后再试";
+        return;
+      }
+
+      // 查询完整用户信息（包含触发器生成 account）
       const { data, error } = await supabaseClient
         .from("users")
-        .insert([{ username, password, session_token: newToken }])
         .select("uuid, username, account, balance, coins, session_token")
+        .eq("uuid", inserted[0].uuid)
         .single();
 
       if (error || !data) {
