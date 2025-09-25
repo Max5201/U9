@@ -5,6 +5,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const loginTab = document.getElementById("login-tab");
   const registerTab = document.getElementById("register-tab");
 
+  // 切换登录/注册表单
   loginTab.addEventListener("click", () => {
     loginTab.classList.add("active");
     registerTab.classList.remove("active");
@@ -26,7 +27,9 @@ document.addEventListener("DOMContentLoaded", () => {
     return crypto.randomUUID(); // v2 JS 原生生成 uuid
   }
 
+  // ---------------------------
   // 登录
+  // ---------------------------
   loginForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = document.getElementById("login-username").value.trim();
@@ -77,7 +80,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
+  // ---------------------------
   // 注册
+  // ---------------------------
   registerForm.addEventListener("submit", async (e) => {
     e.preventDefault();
     const username = document.getElementById("register-username").value.trim();
@@ -100,36 +105,24 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // 插入新用户
+      // 生成 session_token
+      const newToken = generateToken();
+
+      // 插入新用户，触发器会自动生成 account
       const { data, error } = await supabaseClient
         .from("users")
-        .insert([{ username, password }])
-        .select("uuid, username, account, balance, coins")
+        .insert([{ username, password, session_token: newToken }])
+        .select("uuid, username, account, balance, coins, session_token")
         .single();
 
       if (error || !data) {
-        messageEl.textContent = "注册失败，请稍后再试";
-        return;
-      }
-
-      // 生成 session_token
-      const newToken = generateToken();
-      const { error: updateError } = await supabaseClient
-        .from("users")
-        .update({ session_token: newToken })
-        .eq("uuid", data.uuid);
-
-      if (updateError) {
-        console.error(updateError);
+        console.error(error);
         messageEl.textContent = "注册失败，请稍后再试";
         return;
       }
 
       // 保存到 localStorage
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...data, session_token: newToken })
-      );
+      localStorage.setItem("user", JSON.stringify(data));
       window.location.href = "frontend/HOME.html";
 
     } catch (err) {
