@@ -37,40 +37,6 @@ function updateCoinsUI(coinsRaw) {
 }
 
 /* ======================
-   获取用户规则产品
-   ====================== */
-async function getUserRuleProduct(userId, orderNumber) {
-  const { data: rules, error } = await supabaseClient
-    .from("user_product_rules")
-    .select("product_id")
-    .eq("user_id", userId)
-    .eq("order_number", orderNumber)
-    .eq("enabled", true)
-    .limit(1);
-
-  if (error) {
-    console.error("读取手动规则失败", error);
-    return null;
-  }
-  return rules?.[0]?.product_id || null;
-}
-
-/* ======================
-   获取随机产品
-   ====================== */
-async function getRandomProduct() {
-  const { data: products, error } = await supabaseClient
-    .from("products")
-    .select("*")
-    .eq("enabled", true)
-    .eq("manual_only", false);
-  if (error || !products || products.length === 0) {
-    throw new Error("产品列表为空或读取失败！");
-  }
-  return products[Math.floor(Math.random() * products.length)];
-}
-
-/* ======================
    渲染最近订单
    ====================== */
 function renderLastOrder(order, coinsRaw) {
@@ -194,91 +160,33 @@ function showModal(contentHtml) {
 }
 
 /* ======================
-   自动下单
+   自动下单（调用后端 Edge Function）
    ====================== */
 async function autoOrder() {
   if (!window.currentUserId) { alert("请先登录！"); return; }
   if (ordering) return;
   ordering = true;
-  setOrderBtnDisabled(true, "下单中…");
+  setOrderBtnDisabled(true, "匹配中…");
 
   try {
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
-    const coins = parseFloat(user?.coins || 0);
+    const res = await fetch('https://owrjqbkkwdunahvzzjzc.functions.supabase.co/order', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: window.currentUserId })
+    });
 
-    if (coins < 50) {
-      showModal(`<p>你的余额不足，最少需要 50 coins</p>`);
-      setOrderBtnDisabled(false);
-      ordering = false;
-      return;
-    }
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
 
-    const { data: pend } = await supabaseClient
-      .from("orders")
-      .select("id")
-      .eq("user_id", window.currentUserId)
-      .eq("status", "pending")
-      .limit(1);
-    if (pend?.length) {
-      alert("您有未完成订单，请先完成订单再继续下单。");
-      await checkPendingLock();
-      return;
-    }
-
-    const { data: orders } = await supabaseClient
-      .from("orders")
-      .select("id")
-      .eq("user_id", window.currentUserId);
-    const orderNumber = (orders?.length || 0) + 1;
-
-    let product;
-    const ruleProductId = await getUserRuleProduct(window.currentUserId, orderNumber);
-    if (ruleProductId) {
-      const { data: pData, error } = await supabaseClient
-        .from("products")
-        .select("*")
-        .eq("id", ruleProductId)
-        .single();
-      if (!error && pData) product = pData;
-    }
-    if (!product) product = await getRandomProduct();
-
-    const price = parseFloat(product.price) || 0;
-    const profitRatio = parseFloat(product.profit) || 0;
-    const profit = +(price * profitRatio).toFixed(2);
-    const tempCoins = +(coins - price).toFixed(2);
-
-    await supabaseClient
-      .from("users")
-      .update({ coins: tempCoins })
-      .eq("id", window.currentUserId);
-
-    const { data: newOrder, error: orderErr } = await supabaseClient
-      .from("orders")
-      .insert({
-        user_id: window.currentUserId,
-        product_id: product.id,
-        total_price: price,
-        profit: profit,
-        status: "pending"
-      })
-      .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
-      .single();
-    if (orderErr) throw new Error(orderErr.message);
-
-    renderLastOrder(newOrder, tempCoins);
-    updateCoinsUI(tempCoins);
+    renderLastOrder(data.order, data.newCoins);
+    updateCoinsUI(data.newCoins);
     await checkPendingLock();
     await loadRecentOrders();
-
   } catch (e) {
-    alert(e.message || "下单失败");
+    alert(e.message);
   } finally {
     ordering = false;
+    setOrderBtnDisabled(false);
   }
 }
 
