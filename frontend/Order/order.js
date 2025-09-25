@@ -25,7 +25,7 @@ function setOrderBtnDisabled(disabled, reason = "") {
 }
 
 function updateCoinsUI(coinsRaw) {
-  const coins = Number(coinsRaw) || 0;
+  const coins = parseFloat(coinsRaw) || 0;
   const ob = document.getElementById("ordercoins");
   if (ob) ob.textContent = coins.toFixed(2);
 
@@ -77,16 +77,16 @@ function renderLastOrder(order, coinsRaw) {
   const el = document.getElementById("orderResult");
   if (!el || !order) return;
 
-  const coins = Number(coinsRaw) || 0;
-  const price = Number(order.total_price) || 0;
-  const profit = Number(order.profit) || 0; 
-  const profitRatio = Number(order.products?.profit) || 0; // 数据库设置的比例
+  const coins = parseFloat(coinsRaw) || 0;
+  const price = parseFloat(order.total_price) || 0;
+  const profit = parseFloat(order.profit) || 0; 
+  const profitRatio = parseFloat(order.products?.profit) || 0; 
 
   let html = `
     <h3>✅ 最近一次订单</h3>
     <p>商品：${order.products?.name || "未知商品"}</p>
     <p>价格：¥${price.toFixed(2)}</p>
-    <p>利润：${profitRatio}</p>
+    <p>利润比例：${profitRatio}</p>
     <p>收入：+¥${profit.toFixed(2)}</p>
     <p>状态：${order.status === "completed" ? "✅ 已完成" : "⏳ 待完成"}</p>
     <p>时间：${new Date(order.created_at).toLocaleString()}</p>
@@ -121,10 +121,10 @@ async function completeOrder(order, currentCoinsRaw) {
   try {
     if (order.status === "completed") return;
 
-    const currentCoins = Number(currentCoinsRaw) || 0;
-    const price = Number(order.total_price) || 0;
-    const profit = Number(order.profit) || 0;
-    const finalCoins = currentCoins + price + profit;
+    const currentCoins = parseFloat(currentCoinsRaw) || 0;
+    const price = parseFloat(order.total_price) || 0;
+    const profit = parseFloat(order.profit) || 0;
+    const finalCoins = +(currentCoins + price + profit).toFixed(2);
 
     const { error: orderErr } = await supabaseClient
       .from("orders")
@@ -163,11 +163,7 @@ async function checkPendingLock() {
     .eq("status", "pending")
     .limit(1);
 
-  if (pend?.length) {
-    setOrderBtnDisabled(true, "存在未完成订单，请先完成订单");
-  } else {
-    setOrderBtnDisabled(false);
-  }
+  setOrderBtnDisabled(pend?.length > 0, pend?.length > 0 ? "存在未完成订单，请先完成订单" : "");
 }
 
 /* ======================
@@ -187,9 +183,7 @@ function showModal(contentHtml) {
   `;
   document.body.appendChild(modal);
 
-  document.getElementById("closeModalBtn").addEventListener("click", () => {
-    modal.remove();
-  });
+  document.getElementById("closeModalBtn").addEventListener("click", () => modal.remove());
 
   document.addEventListener("keydown", function escHandler(e) {
     if (e.key === "Escape") {
@@ -214,7 +208,7 @@ async function autoOrder() {
       .select("coins")
       .eq("id", window.currentUserId)
       .single();
-    const coins = Number(user?.coins || 0);
+    const coins = parseFloat(user?.coins || 0);
 
     if (coins < 50) {
       showModal(`<p>你的余额不足，最少需要 50 coins</p>`);
@@ -253,10 +247,10 @@ async function autoOrder() {
     }
     if (!product) product = await getRandomProduct();
 
-    const price = Number(product.price) || 0;
-    const profitRatio = Number(product.profit) || 0;
+    const price = parseFloat(product.price) || 0;
+    const profitRatio = parseFloat(product.profit) || 0;
     const profit = +(price * profitRatio).toFixed(2);
-    const tempCoins = coins - price;
+    const tempCoins = +(coins - price).toFixed(2);
 
     await supabaseClient
       .from("users")
@@ -318,9 +312,9 @@ async function loadRecentOrders() {
         list.innerHTML = `<li>暂无订单！</li>`;
       } else {
         list.innerHTML = recentOrders.map(o => {
-          const price = Number(o.total_price) || 0;
-          const profit = Number(o.profit) || 0;
-          const profitRatio = Number(o.products?.profit) || 0;
+          const price = parseFloat(o.total_price) || 0;
+          const profit = parseFloat(o.profit) || 0;
+          const profitRatio = parseFloat(o.products?.profit) || 0;
           return `
             <li>
               🛒 ${o.products?.name || "未知商品"} /
@@ -376,7 +370,7 @@ async function loadCoinsOrderPage() {
   if (!error && data) {
     updateCoinsUI(data.coins);
     const balEl = document.getElementById("balance");
-    if (balEl) balEl.textContent = (Number(data.balance) || 0).toFixed(2);
+    if (balEl) balEl.textContent = (parseFloat(data.balance) || 0).toFixed(2);
     await checkPendingLock();
   }
 }
@@ -439,12 +433,12 @@ async function confirmExchange() {
       .single();
     if (error || !user) throw new Error("加载用户信息失败");
 
-    const coins = Number(user.coins) || 0;
-    const balance = Number(user.balance) || 0;
+    const coins = parseFloat(user.coins) || 0;
+    const balance = parseFloat(user.balance) || 0;
     if (balance < amount) { alert(`余额不足，当前 Balance：¥${balance.toFixed(2)}`); return; }
 
-    const newCoins = coins + amount;
-    const newBalance = balance - amount;
+    const newCoins = +(coins + amount).toFixed(2);
+    const newBalance = +(balance - amount).toFixed(2);
 
     const { error: updateErr } = await supabaseClient
       .from("users")
