@@ -29,17 +29,12 @@
   function renderStatus() {
     const currentRound = Number(user.current_round_count) || 0;
     const totalRound = Number(roundsConfig?.orders_per_round) || 5;
+
     statusContainer.innerHTML = `
       <p><strong>Coins:</strong> ${user.coins ?? 0}</p>
       <p><strong>轮次:</strong> ${currentRound}/${totalRound}</p>
       <p id="matchInfo"></p>
-      ${startBtn.outerHTML}
     `;
-  }
-
-  function renderMatchInfo(text) {
-    const matchInfo = document.getElementById('matchInfo');
-    if (matchInfo) matchInfo.textContent = text;
   }
 
   // -------------------------
