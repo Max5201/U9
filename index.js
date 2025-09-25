@@ -1,3 +1,6 @@
+// 登录/注册保留 localStorage
+localStorage.setItem("user", JSON.stringify(data));
+
 document.addEventListener("DOMContentLoaded", () => {
   const loginTab = document.getElementById("login-tab");
   const registerTab = document.getElementById("register-tab");
