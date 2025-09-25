@@ -5,6 +5,11 @@ document.addEventListener("DOMContentLoaded", () => {
   const registerForm = document.getElementById("register-form");
   const messageEl = document.getElementById("message");
 
+  if (!loginTab || !registerTab) {
+    console.error("找不到 login-tab 或 register-tab，请检查 HTML");
+    return;
+  }
+
   // 切换登录/注册 tab
   loginTab.addEventListener("click", () => {
     loginTab.classList.add("active");
@@ -38,13 +43,12 @@ document.addEventListener("DOMContentLoaded", () => {
         .from("users")
         .select("*")
         .eq("username", username)
-        .eq("password", password) // ⚠️ 实际要存哈希
+        .eq("password", password)
         .single();
 
       if (error || !data) {
         messageEl.textContent = "用户名或密码错误";
       } else {
-        // 保存到 localStorage，当作已登录
         localStorage.setItem("user", JSON.stringify(data));
         window.location.href = "frontend/HOME.html";
       }
@@ -66,7 +70,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     try {
-      // 检查是否已存在
       const { data: existing } = await window.supabaseClient
         .from("users")
         .select("uuid")
@@ -78,19 +81,16 @@ document.addEventListener("DOMContentLoaded", () => {
         return;
       }
 
-      // 插入新用户
-      const { data, error } = await window.supabaseClient.from("users").insert([
-        {
-          username: username,
-          password: password, // ⚠️ 实际要存 bcrypt 哈希
-        },
-      ]).select().single(); // ← 插入后直接返回该用户
+      const { data, error } = await window.supabaseClient
+        .from("users")
+        .insert([{ username, password }])
+        .select()
+        .single();
 
       if (error || !data) {
         console.error(error);
         messageEl.textContent = "注册失败，请稍后再试";
       } else {
-        // 自动登录（保存到 localStorage）
         localStorage.setItem("user", JSON.stringify(data));
         window.location.href = "frontend/HOME.html";
       }
