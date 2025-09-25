@@ -1,53 +1,4 @@
 // =======================
-// 密码可见切换
-// =======================
-window.togglePassword = function (id, el) {
-  const input = document.getElementById(id);
-  if (!input) return;
-  if (input.type === "password") {
-    input.type = "text";
-    el.textContent = "🙈";
-  } else {
-    input.type = "password";
-    el.textContent = "👁️";
-  }
-};
-
-// =======================
-// 登录 / 注册 Tab 切换
-// =======================
-const loginForm = document.getElementById("loginForm");
-const registerForm = document.getElementById("registerForm");
-const showLoginBtn = document.getElementById("showLogin");
-const showRegisterBtn = document.getElementById("showRegister");
-
-showLoginBtn.addEventListener("click", () => {
-  loginForm.classList.remove("hidden");
-  registerForm.classList.add("hidden");
-  showLoginBtn.classList.add("active");
-  showRegisterBtn.classList.remove("active");
-});
-
-showRegisterBtn.addEventListener("click", () => {
-  loginForm.classList.add("hidden");
-  registerForm.classList.remove("hidden");
-  showLoginBtn.classList.remove("active");
-  showRegisterBtn.classList.add("active");
-});
-
-// =======================
-// 生成随机平台账号（2位大写字母 + 4位数字，如 AB1234）
-// =======================
-function generatePlatformAccount() {
-  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-  const numbers = "0123456789";
-  let acc = "";
-  for (let i = 0; i < 2; i++) acc += letters[Math.floor(Math.random() * letters.length)];
-  for (let i = 0; i < 4; i++) acc += numbers[Math.floor(Math.random() * numbers.length)];
-  return acc;
-}
-
-// =======================
 // 注册逻辑
 // =======================
 document.getElementById("registerBtn").addEventListener("click", async () => {
@@ -84,14 +35,14 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   // 生成平台账号
   const platformAccount = generatePlatformAccount();
 
-  // 插入新用户
+  // 插入新用户，ID 自动生成 UUID
   const { data, error } = await supabaseClient
     .from("users")
     .insert({
       username,
-      password, // ⚠️ 明文存储不安全，建议 hash
-      coins: 0,
-      balance: 0,
+      password, 
+      coins: 0.00,
+      balance: 0.00,
       platform_account: platformAccount
     })
     .select()
@@ -103,7 +54,7 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   }
 
   // 保存到 localStorage
-  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUserId", data.id);   // UUID
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
 
@@ -143,7 +94,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   }
 
   // 保存到 localStorage
-  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUserId", data.id);   // UUID
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
 
