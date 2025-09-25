@@ -10,8 +10,8 @@ if (userInfoDiv && user) {
   userInfoDiv.innerHTML = `
     <div class="user-card">
       <h3>${user.username}</h3>
-      <p><strong>账号：</strong> ${user.account}</p>
-      <p><strong>余额：</strong> ${user.balance ?? 0}  </p>
+      <p><strong>Account：</strong> ${user.account}</p>
+      <p><strong>Balance：</strong> ${user.balance ?? 0}  </p>
     </div>
   `;
 }
