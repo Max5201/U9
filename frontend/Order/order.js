@@ -175,13 +175,17 @@ async function autoOrder() {
       body: JSON.stringify({ user_id: window.currentUserId })
     });
 
-    const data = await res.json();
-    if (data.error) throw new Error(data.error);
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `请求失败: ${res.status}`);
+    }
 
+    const data = await res.json();
     renderLastOrder(data.order, data.newCoins);
     updateCoinsUI(data.newCoins);
     await checkPendingLock();
     await loadRecentOrders();
+
   } catch (e) {
     alert(e.message);
   } finally {
