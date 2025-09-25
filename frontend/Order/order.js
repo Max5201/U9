@@ -1,19 +1,22 @@
+// frontend/Order/order.js
 (function() {
   let user = JSON.parse(localStorage.getItem('user'));
   if (!user || !user.uuid) {
     window.location.href = '/index.html';
+    return;
   }
 
   const startBtn = document.getElementById('startBtn');
   const orderInfo = document.getElementById('orderInfo');
 
+  // 创建状态显示区域
+  const userStatusDiv = document.createElement('div');
+  userStatusDiv.id = 'userStatusDiv';
+  startBtn.insertAdjacentElement('beforebegin', userStatusDiv);
+
   const orderCardContainer = document.createElement('div');
   orderCardContainer.id = 'orderCardContainer';
   startBtn.insertAdjacentElement('afterend', orderCardContainer);
-
-  const userStatusDiv = document.createElement('div');
-  userStatusDiv.id = 'userStatusDiv';
-  orderCardContainer.insertAdjacentElement('beforebegin', userStatusDiv);
 
   let roundsConfig = null;
   let isMatching = false;
@@ -23,9 +26,11 @@
   // 渲染用户状态
   // -------------------------
   function renderUserStatus() {
+    const currentRound = Number(user.current_round_count) || 0;
+    const totalRound = Number(roundsConfig?.orders_per_round) || 5;
     userStatusDiv.innerHTML = `
       <p><strong>Coins:</strong> ${user.coins ?? 0}</p>
-      <p><strong>轮次:</strong> ${user.current_round_count ?? 0}/${roundsConfig.orders_per_round ?? 5}</p>
+      <p><strong>轮次:</strong> ${currentRound}/${totalRound}</p>
       ${lastOrder ? `
         <p><strong>最近订单:</strong></p>
         <p>产品: ${lastOrder.name}</p>
@@ -83,11 +88,19 @@
     if (!roundsConfig) return;
 
     if (startBtn.textContent === 'START') {
-      user.current_round_count = 0;
-      localStorage.setItem('user', JSON.stringify(user));
-      startBtn.textContent = 'GO';
-      orderInfo.textContent = '';
-      renderUserStatus();
+      // 初始化轮次到 0，并更新数据库
+      const { error } = await supabaseClient
+        .from('users')
+        .update({ current_round_count: 0 })
+        .eq('uuid', user.uuid);
+
+      if (!error) {
+        user.current_round_count = 0;
+        localStorage.setItem('user', JSON.stringify(user));
+        startBtn.textContent = 'GO';
+        orderInfo.textContent = '';
+        renderUserStatus();
+      }
       return;
     }
 
@@ -97,6 +110,9 @@
       return;
     }
 
+    // -------------------------
+    // 开始匹配
+    // -------------------------
     isMatching = true;
     startBtn.disabled = true;
     orderInfo.textContent = '正在匹配产品...';
