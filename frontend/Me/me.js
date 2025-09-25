@@ -53,24 +53,36 @@ async function fetchUserInfo() {
 // 页面加载时获取最新信息
 fetchUserInfo();
 
-// 订阅实时更新（多端同步）
-supabaseClient
-  .from(`users:uuid=eq.${user.uuid}`)
-  .on('UPDATE', payload => {
-    // 只更新可变字段，保留 uuid
-    user = {
-      uuid: user.uuid,
-      username: payload.new.username ?? user.username,
-      account: payload.new.account ?? user.account,
-      balance: payload.new.balance ?? user.balance,
-      coins: payload.new.coins ?? user.coins
-    };
-    localStorage.setItem('user', JSON.stringify(user));
-    renderUserInfo(user);
-  })
+// -------------------------
+// Supabase v2 Realtime 订阅（多端同步）
+// -------------------------
+const channel = supabaseClient.channel('user_updates_' + user.uuid)
+  .on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'users',
+      filter: `uuid=eq.${user.uuid}`
+    },
+    payload => {
+      // payload.new 包含最新字段
+      user = {
+        uuid: user.uuid,
+        username: payload.new.username ?? user.username,
+        account: payload.new.account ?? user.account,
+        balance: payload.new.balance ?? user.balance,
+        coins: payload.new.coins ?? user.coins
+      };
+      localStorage.setItem('user', JSON.stringify(user));
+      renderUserInfo(user);
+    }
+  )
   .subscribe();
 
+// -------------------------
 // 退出登录
+// -------------------------
 const logoutBtn = document.getElementById('logoutBtn');
 if (logoutBtn) {
   logoutBtn.addEventListener('click', () => {
