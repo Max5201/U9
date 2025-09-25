@@ -37,6 +37,11 @@
     `;
   }
 
+  function renderMatchInfo(text) {
+    const matchInfo = document.getElementById('matchInfo');
+    if (matchInfo) matchInfo.textContent = text;
+  }
+
   // -------------------------
   // 渲染最近订单
   // -------------------------
@@ -216,7 +221,7 @@
 
     lastOrder = product;
 
-    recentOrderContainer.innerHTML = '';
+    renderRecentOrder();
     renderMatchInfo(`完成订单 ${user.current_round_count}/${roundsConfig.orders_per_round}`);
     renderStatus();
 
