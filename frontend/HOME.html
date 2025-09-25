@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>U9</title>
 
-  <!-- CSS 部分 --> 
+  <!-- CSS -->
   <link rel="stylesheet" href="Home/home.css">
   <link rel="stylesheet" href="About/about.css">
   <link rel="stylesheet" href="Order/order.css">
@@ -15,45 +15,41 @@
 
   <!-- Supabase SDK -->
   <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-  <!-- 全局 Supabase 初始化 -->
-  <script src="../supabaseClient.js"></script>
-  <!-- 全局 Supabase 初始化 -->
-
+  <script src="supabaseClient.js"></script>
 </head>
 <body>
-  <!-- 首页页面 -->
+  <!-- 首页 -->
   <div id="homePage" class="page active">
     <h2>🏠 HOME</h2>
     <p>欢迎来到 U9 平台！</p>
   </div>
 
-  <!-- 信息页面 -->
+  <!-- 信息 -->
   <div id="infoPage" class="page">
     <h2>💬 信息</h2>
     <p>这里是消息中心，显示你的未读消息和通知。</p>
   </div>
 
-  <!-- 订单页面 -->
+  <!-- 订单 -->
   <div id="orderPage" class="page">
     <h2>🛒 订单</h2>
     <p>这里显示你的订单信息。</p>
   </div>
 
-  <!-- 关于我们页面 -->
+  <!-- 关于我们 -->
   <div id="aboutPage" class="page">
     <h2>ℹ️ 关于我们</h2>
     <p>这里是关于我们页面内容。</p>
   </div>
 
-  <!-- 我的页面 -->
+  <!-- 我的 -->
   <div id="myPage" class="page">
     <h2>👤 我的</h2>
-    <p>显示用户信息、余额、金币等。</p>
     <div id="userInfo"></div>
     <button id="logoutBtn">退出登录</button>
   </div>
 
-  <!-- 部导航栏 --> 
+  <!-- 底部导航栏 -->
   <div class="bottom-nav">
     <button data-page="homePage" class="active">Home</button>
     <button data-page="infoPage">Message</button>
@@ -62,13 +58,7 @@
     <button data-page="myPage">Me</button>
   </div>
 
-  <!-- JS 部分 --> 
+  <!-- 引入 Home.js -->
   <script src="Home/home.js"></script>
-  <script src="Message/message.js"></script>
-  <script src="Order/order.js"></script>
-  <script src="About/about.js"></script>
-  <script src="Me/me.js"></script>
-  <script src="Button/button.js"></script>
-  <script src="Recharge/recharge.js"></script>
 </body>
 </html>
