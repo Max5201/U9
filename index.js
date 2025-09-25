@@ -27,7 +27,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         // ✅ 存完整用户对象到 localStorage
         localStorage.setItem("user", JSON.stringify(data));
-        window.location.href = "HOME.html"; // 跳转到根目录 HOME.html
+        window.location.href = "frontend/HOME.html"; // 跳转到根目录 HOME.html
       }
     } catch (err) {
       console.error(err);
@@ -71,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         // ✅ 注册后自动登录
         localStorage.setItem("user", JSON.stringify(data));
-        window.location.href = "HOME.html";
+        window.location.href = "frontend/HOME.html";
       }
     } catch (err) {
       console.error(err);
