@@ -66,6 +66,20 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
+    // 先检查是否存在未完成订单
+    const { data: pend } = await supabaseClient
+      .from("orders")
+      .select("id")
+      .eq("user_id", window.currentUserId)
+      .eq("status", "pending")
+      .limit(1);
+
+    if (pend?.length) {
+      alert("⚠️ 存在未完成订单，请先完成订单！");
+      ordering = false;
+      return;
+    }
+
     // 调用 RPC 自动下单
     const { data, error } = await supabaseClient.rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
 
@@ -90,12 +104,13 @@ async function autoOrder() {
     // ✅ 进入匹配倒计时
     const delaySec = Math.floor(Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)) + window.MATCH_MIN_SECONDS;
 
-    // 本地保存匹配状态（防止刷新丢失）
     localStorage.setItem("matchingEndTime", Date.now() + delaySec * 1000);
     localStorage.setItem("matchingProductId", order.product_id);
 
-    // 启动匹配倒计时
-    startMatchingCountdown({ id: order.product_id, name: order.product_name, price: order.total_price, profit: order.profit / order.total_price }, delaySec);
+    startMatchingCountdown(
+      { id: order.product_id, name: order.product_name, price: order.total_price, profit: order.profit / order.total_price },
+      delaySec
+    );
 
     await updateRoundProgress();
 
@@ -385,19 +400,21 @@ async function finalizeMatchedOrder(product) {
       .select("coins")
       .eq("id", window.currentUserId)
       .single();
-    let coins = Number(user?.coins || 0);
 
+    let coins = Number(user?.coins || 0);
     const price = Number(product.price) || 0;
     const profitRatio = Number(product.profit) || 0;
     const profit = +(price * profitRatio).toFixed(2);
     const tempCoins = coins - price;
 
+    // 扣除用户金币
     await supabaseClient
       .from("users")
       .update({ coins: tempCoins })
       .eq("id", window.currentUserId);
 
-    const { data: newOrder } = await supabaseClient
+    // 插入订单
+    const { data: newOrder, error: insErr } = await supabaseClient
       .from("orders")
       .insert({
         user_id: window.currentUserId,
@@ -410,7 +427,9 @@ async function finalizeMatchedOrder(product) {
       .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
       .single();
 
-    // ✅ 渲染订单
+    if (insErr) throw insErr;
+
+    // ✅ 渲染订单 & 更新 UI
     renderLastOrder(newOrder, tempCoins);
     updateCoinsUI(tempCoins);
     await checkPendingLock();
@@ -426,8 +445,6 @@ async function finalizeMatchedOrder(product) {
   }
 }
 
-// 页面加载时恢复匹配状态
-document.addEventListener("DOMContentLoaded", restoreMatchingIfAny);
 
 
 /* ====================== 16.检查本轮 Coins → Balance 是否可用 ====================== */
