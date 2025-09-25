@@ -1,217 +1,310 @@
-// frontend/Order/order.js
-(function() {
-  const startBtn = document.getElementById('startBtn');
-  const statusContainer = document.createElement('div');
-  const recentOrderContainer = document.createElement('div');
-  const orderInfoDiv = document.getElementById('orderInfo');
+/* ========= 全局基础 ========= */
+body {
+  margin: 0;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #f5f7fa;
+  color: #333;
+}
 
-  orderInfoDiv.prepend(recentOrderContainer);
-  orderInfoDiv.prepend(statusContainer);
+h2, h3 {
+  margin: 10px 0;
+  font-weight: 600;
+}
 
-  let user = JSON.parse(localStorage.getItem('user'));
-  if (!user || !user.uuid) {
-    window.location.href = '/index.html';
-  }
+.page {
+  display: none;
+  padding: 20px;
+}
 
-  let roundsConfig = null;
-  let isMatching = false;
+.page.active {
+  display: block;
+}
 
-  // 获取轮次配置
-  async function fetchRoundsConfig() {
-    const { data, error } = await supabaseClient
-      .from('rounds')
-      .select('*')
-      .limit(1)
-      .single();
-    if (error) {
-      console.error('获取轮次配置失败', error);
-      return;
-    }
-    roundsConfig = data;
-  }
+/* ========= 底部导航 ========= */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: space-around;
+  border-top: 1px solid #ddd;
+  background: #fff;
+  padding: 8px 0;
+}
 
-  // 获取最新用户信息
-  async function fetchUser() {
-    const { data, error } = await supabaseClient
-      .from('users')
-      .select('*')
-      .eq('uuid', user.uuid)
-      .single();
+.bottom-nav button {
+  flex: 1;
+  border: none;
+  background: none;
+  padding: 8px;
+  font-size: 15px;
+  cursor: pointer;
+  transition: color 0.3s;
+}
 
-    if (error || !data) {
-      console.error('获取用户信息失败', error);
-      return;
-    }
+.bottom-nav button.active {
+  color: #1976d2;
+  font-weight: bold;
+}
 
-    user = data;
-    localStorage.setItem('user', JSON.stringify(user));
-    renderStatus();
-    renderRecentOrder();
-  }
+/* ========= 订单中心 ========= */
+.order-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
 
-  // 渲染 Coins / 轮次 / 按钮 / 倒计时
-  function renderStatus() {
-    let remainingCooldown = 0;
-    if (user.last_round_completed) {
-      const now = new Date();
-      const last = new Date(user.last_round_completed);
-      remainingCooldown = Math.max(
-        0,
-        Math.ceil((roundsConfig.cooldown_seconds * 1000 - (now - last)) / 1000)
-      );
-    }
+.coins-box {
+  font-weight: bold;
+  color: #2e7d32;
+}
 
-    const roundText = `${user.current_round_count ?? 0}/${roundsConfig.orders_per_round}`;
+.coins-box button {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 50%;
+  background: #ff8800d9;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: 0.3s;
+}
 
-    statusContainer.innerHTML = `
-      <p>Coins: ${user.coins ?? 0}</p>
-      <p>轮次: ${roundText}</p>
-      ${remainingCooldown > 0 ? `<p>冷却倒计时: ${remainingCooldown}s</p>` : ''}
-    `;
+.coins-box button:hover {
+  background: #388e3c;
+}
 
-    // 按钮状态
-    if (remainingCooldown > 0) {
-      startBtn.disabled = true;
-      startBtn.textContent = '冷却中...';
-    } else if (isMatching) {
-      startBtn.disabled = true;
-      startBtn.textContent = '匹配中...';
-    } else {
-      startBtn.disabled = user.coins < 30;
-      startBtn.textContent = startBtn.dataset.started ? 'GO' : 'START';
-    }
-  }
+.order-actions {
+  text-align: center;
+  margin: 20px 0;
+}
 
-  // 渲染最近订单（最新一条）
-  async function renderRecentOrder() {
-    const { data, error } = await supabaseClient
-      .from('orders')
-      .select('*, products(name, price, profit, image_url)')
-      .eq('user_uuid', user.uuid)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+.order-actions button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 10px;
+  background: #1976d2;
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  transition: 0.3s;
+  margin: 0 6px;
+}
 
-    if (error || !data) {
-      recentOrderContainer.innerHTML = `<p>最近订单为空</p>`;
-      return;
-    }
+.order-actions button:hover {
+  background: #1565c0;
+}
 
-    const p = data.products;
-    recentOrderContainer.innerHTML = `
-      <h4>最近订单:</h4>
-      <p>产品: ${p.name}</p>
-      <p>价格: ${p.price}</p>
-      <p>利润: ${p.profit}</p>
-    `;
-  }
+.order-result {
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fafafa;
+  text-align: center;
+  font-size: 15px;
+  color: #555;
+}
 
-  // 匹配产品
-  async function matchProduct() {
-    if (!roundsConfig) await fetchRoundsConfig();
+/* ========= 最近订单历史 ========= */
+.order-history {
+  margin-top: 25px;
+}
 
-    // 随机匹配产品
-    const { data: products, error } = await supabaseClient
-      .from('products')
-      .select('*')
-      .order('id', { ascending: false }) // Supabase v2 不能直接 random()，这里可调整
-      .limit(1);
+.order-history h3 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
 
-    if (error || !products || products.length === 0) {
-      alert('匹配失败，请重试');
-      isMatching = false;
-      renderStatus();
-      return;
-    }
+.order-count {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1976d2;
+  margin-left: 10px;
+}
 
-    const product = products[0];
+.order-history ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
 
-    // 更新用户匹配状态
-    const { data: updatedUser } = await supabaseClient
-      .from('users')
-      .update({
-        coins: user.coins - product.price,
-        last_matched_product: product,
-        matching_started_at: new Date()
-      })
-      .eq('uuid', user.uuid)
-      .select()
-      .single();
+.order-history li {
+  padding: 10px 12px;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+}
 
-    user = updatedUser;
-    localStorage.setItem('user', JSON.stringify(user));
-    isMatching = false;
-    renderStatus();
-    renderMatchedProduct(product);
-  }
+.order-history li:last-child {
+  border-bottom: none;
+}
 
-  function renderMatchedProduct(product) {
-    recentOrderContainer.innerHTML = `
-      <h4>匹配到产品:</h4>
-      <p>产品: ${product.name}</p>
-      <p>价格: ${product.price}</p>
-      <p>利润: ${product.profit}</p>
-      <img src="${product.image_url}" width="100" />
-      <button id="completeBtn">完成</button>
-    `;
+/* ========= 通用按钮 ========= */
+button {
+  font-family: inherit;
+  outline: none;
+}
 
-    const completeBtn = document.getElementById('completeBtn');
+button:disabled {
+  background: #ccc !important;
+  cursor: not-allowed;
+}
 
-    if (user.coins < 0) {
-      completeBtn.disabled = true;
-      completeBtn.textContent = '金币不足，先充值';
-    } else {
-      completeBtn.disabled = false;
-    }
+/* ========= 通用 Modal 样式 ========= */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 999;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 
-    completeBtn.addEventListener('click', async () => {
-      // 完成订单：增加 Coins 和利润 + 轮次++
-      const { data: updatedUser } = await supabaseClient
-        .from('users')
-        .update({
-          coins: user.coins + product.price + product.profit,
-          current_round_count: (user.current_round_count ?? 0) + 1,
-          last_round_completed: (user.current_round_count + 1) >= roundsConfig.orders_per_round ? new Date() : user.last_round_completed,
-          last_matched_product: null,
-          matching_started_at: null
-        })
-        .eq('uuid', user.uuid)
-        .select()
-        .single();
+  background-color: rgba(0,0,0,0.5);
+  justify-content: center;
+  align-items: center;
+}
 
-      // 写订单历史
-      await supabaseClient.from('orders').insert({
-        user_uuid: user.uuid,
-        product_id: product.id,
-        price: product.price,
-        profit: product.profit
-      });
+.modal-content {
+  background: #fff;
+  padding: 25px 30px;
+  border-radius: 16px;
+  text-align: center;
+  width: 320px;
+  max-width: 90%;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+  animation: fadeIn 0.25s ease;
+}
 
-      user = updatedUser;
-      localStorage.setItem('user', JSON.stringify(user));
-      renderStatus();
-      renderRecentOrder();
-    });
-  }
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 12px;
+  font-size: 1.3em;
+  color: #333;
+}
 
-  // START / GO 按钮点击
-  startBtn.addEventListener('click', async () => {
-    if (!startBtn.dataset.started) {
-      startBtn.dataset.started = true;
-    }
-    isMatching = true;
-    renderStatus();
+.modal-content p {
+  margin-bottom: 10px;
+  color: #555;
+  font-size: 0.95em;
+}
 
-    await matchProduct();
-  });
+.modal-content input,
+.modal-content select {
+  width: 85%;
+  padding: 10px 12px;
+  margin: 12px 0 18px 0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1em;
+  text-align: center;
+  transition: border-color 0.2s;
+}
 
-  // 页面加载
-  (async function init() {
-    await fetchRoundsConfig();
-    await fetchUser();
+.modal-content input:focus,
+.modal-content select:focus {
+  border-color: #1976d2;
+  outline: none;
+  box-shadow: 0 0 5px rgba(25,118,210,0.3);
+}
 
-    // 每秒刷新状态（倒计时 / Coins / 轮次）
-    setInterval(fetchUser, 1000);
-  })();
+.modal-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
 
-})();
+.modal-actions button {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1em;
+  font-weight: 500;
+  transition: 0.2s;
+}
+
+/* ========= AddCoins 按钮 ========= */
+#cancelAddCoins {
+  background-color: #e0e0e0;
+  color: #333;
+}
+#cancelAddCoins:hover {
+  background-color: #d5d5d5;
+}
+#confirmAddCoins {
+  background-color: #4caf50;
+  color: white;
+}
+#confirmAddCoins:hover {
+  background-color: #45a049;
+}
+
+/* ========= Balance/Coins 弹窗新增 ========= */
+#exchangeModal h3 {
+  color: #1976d2;
+}
+
+#exchangeNotice {
+  font-size: 0.85em;
+  color: #d32f2f;
+  margin-top: -8px;
+  margin-bottom: 12px;
+}
+
+#cancelExchange {
+  background-color: #e0e0e0;
+  color: #333;
+}
+#cancelExchange:hover {
+  background-color: #bdbdbd;
+}
+
+#confirmExchange {
+  background-color: #1976d2;
+  color: #fff;
+}
+#confirmExchange:hover {
+  background-color: #1565c0;
+}
+
+/* ========= 弹窗渐显动画 ========= */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* 横排切换按钮 */
+.exchange-toggle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #1976d2;
+}
+
+.exchange-btn {
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  background-color: #e0e0e0;
+  color: #555;
+  font-weight: 500;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.exchange-btn.active {
+  background-color: #1976d2;
+  color: #fff;
+}
+
+.exchange-btn:not(.active):hover {
+  background-color: #bdbdbd;
+}
