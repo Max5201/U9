@@ -657,3 +657,62 @@ function setMatchingState(isMatching) {
     btn.textContent = isMatching ? "🎲 正在匹配..." : "🎲 一键刷单";
   }
 }
+
+/* ====================== 22.安全调用 RPC 自动下单 ====================== */
+async function safeAutoOrder() {
+  if (!window.currentUserUUID) {
+    alert("用户 UUID 不存在，请先登录！");
+    return;
+  }
+
+  // 简单 UUID 校验
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(window.currentUserUUID)) {
+    alert("UUID 格式无效，请检查！");
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient
+      .rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
+
+    if (error) {
+      console.error("RPC 调用失败：", error);
+      alert("下单失败：" + error.message);
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      console.warn("RPC 返回为空，可能没有可用订单或用户被冷却");
+      alert("当前无法下单，请稍后再试");
+      return;
+    }
+
+    const order = data[0]; // 返回表格类型，取第一行
+    console.log("✅ 下单成功：", order);
+
+    // 更新前端状态
+    updateCoinsUI(order.coins_after || 0);
+
+    // 如果有冷却
+    if (order.cooldown) {
+      startCooldownTimer(order.next_allowed, "冷却中，请等待");
+    }
+
+    // 渲染订单
+    renderLastOrder({
+      id: order.order_id,
+      total_price: order.total_price,
+      profit: order.profit,
+      status: order.cooldown ? "pending" : "completed",
+      created_at: new Date(),
+      products: { name: order.product_name, profit: order.profit / order.total_price }
+    }, order.coins_after || 0);
+
+    await updateRoundProgress();
+
+  } catch (e) {
+    console.error("下单异常：", e);
+    alert("下单异常：" + e.message);
+  }
+}
