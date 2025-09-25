@@ -1,138 +1,164 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const loginForm = document.getElementById("login-form");
-  const registerForm = document.getElementById("register-form");
-  const messageEl = document.getElementById("message");
-  const loginTab = document.getElementById("login-tab");
-  const registerTab = document.getElementById("register-tab");
+// =======================
+// 密码可见切换
+// =======================
+window.togglePassword = function (id, el) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  if (input.type === "password") {
+    input.type = "text";
+    el.textContent = "🙈";
+  } else {
+    input.type = "password";
+    el.textContent = "👁️";
+  }
+};
 
-  // 切换登录/注册表单
-  loginTab.addEventListener("click", () => {
-    loginTab.classList.add("active");
-    registerTab.classList.remove("active");
-    loginForm.classList.add("active");
-    registerForm.classList.remove("active");
-    messageEl.textContent = "";
-  });
+// =======================
+// 登录 / 注册 Tab 切换
+// =======================
+const loginForm = document.getElementById("loginForm");
+const registerForm = document.getElementById("registerForm");
+const showLoginBtn = document.getElementById("showLogin");
+const showRegisterBtn = document.getElementById("showRegister");
 
-  registerTab.addEventListener("click", () => {
-    registerTab.classList.add("active");
-    loginTab.classList.remove("active");
-    registerForm.classList.add("active");
-    loginForm.classList.remove("active");
-    messageEl.textContent = "";
-  });
+showLoginBtn.addEventListener("click", () => {
+  loginForm.classList.remove("hidden");
+  registerForm.classList.add("hidden");
+  showLoginBtn.classList.add("active");
+  showRegisterBtn.classList.remove("active");
+});
 
-  // 生成 session_token
-  function generateToken() {
-    return crypto.randomUUID();
+showRegisterBtn.addEventListener("click", () => {
+  loginForm.classList.add("hidden");
+  registerForm.classList.remove("hidden");
+  showLoginBtn.classList.remove("active");
+  showRegisterBtn.classList.add("active");
+});
+
+// =======================
+// 生成随机平台账号（2位大写字母 + 4位数字，如 AB1234）
+// =======================
+function generatePlatformAccount() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const numbers = "0123456789";
+  let acc = "";
+  for (let i = 0; i < 2; i++) acc += letters[Math.floor(Math.random() * letters.length)];
+  for (let i = 0; i < 4; i++) acc += numbers[Math.floor(Math.random() * numbers.length)];
+  return acc;
+}
+
+// =======================
+// 生成 UUID
+// =======================
+function generateUUID() {
+  return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+    (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+  );
+}
+
+// =======================
+// 注册逻辑
+// =======================
+document.getElementById("registerBtn").addEventListener("click", async () => {
+  const username = document.getElementById("regUsername").value.trim();
+  const password = document.getElementById("regPassword").value;
+  const confirm = document.getElementById("regConfirmPassword").value;
+  const agree = document.getElementById("agreeTerms").checked;
+
+  if (!username || !password) {
+    alert("请输入用户名和密码");
+    return;
+  }
+  if (password !== confirm) {
+    alert("两次输入的密码不一致");
+    return;
+  }
+  if (!agree) {
+    alert("请先勾选同意条款");
+    return;
   }
 
-  // ---------------- 登录 ----------------
-  loginForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const username = document.getElementById("login-username").value.trim();
-    const password = document.getElementById("login-password").value.trim();
-    if (!username || !password) {
-      messageEl.textContent = "请输入用户名和密码";
-      return;
-    }
+  // 检查是否已有用户
+  const { data: exist } = await supabaseClient
+    .from("users")
+    .select("id")
+    .eq("username", username)
+    .maybeSingle();
 
-    try {
-      const { data, error } = await supabaseClient
-        .from("users")
-        .select("uuid, username, account, balance, coins, session_token")
-        .eq("username", username)
-        .eq("password", password)
-        .single();
+  if (exist) {
+    alert("该用户名已存在，请换一个");
+    return;
+  }
 
-      if (error || !data) {
-        messageEl.textContent = "用户名或密码错误";
-        return;
-      }
+  const platformAccount = generatePlatformAccount();
+  const uuid = generateUUID(); // 自动生成 UUID
 
-      // 生成新的 session_token
-      const newToken = generateToken();
-      const { error: updateError } = await supabaseClient
-        .from("users")
-        .update({ session_token: newToken })
-        .eq("uuid", data.uuid);
+  // 插入新用户
+  const { data, error } = await supabaseClient
+    .from("users")
+    .insert({
+      username,
+      password, // ⚠️ 明文存储不安全，建议 hash
+      coins: 0,
+      balance: 0,
+      platform_account: platformAccount,
+      uuid
+    })
+    .select()
+    .single();
 
-      if (updateError) {
-        console.error(updateError);
-        messageEl.textContent = "登录失败，请稍后再试";
-        return;
-      }
+  if (error) {
+    alert("注册失败: " + error.message);
+    return;
+  }
 
-      // 保存到 localStorage
-      localStorage.setItem(
-        "user",
-        JSON.stringify({ ...data, session_token: newToken })
-      );
-      window.location.href = "frontend/HOME.html";
+  // 保存到 localStorage
+  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUser", data.username);
+  localStorage.setItem("platformAccount", data.platform_account);
+  localStorage.setItem("currentUserUUID", data.uuid); // 保存 UUID
 
-    } catch (err) {
-      console.error(err);
-      messageEl.textContent = "登录失败，请稍后再试";
-    }
-  });
+  alert("注册成功！");
+  window.location.href = "frontend/HOME.html";
+});
 
-  // ---------------- 注册 ----------------
-  registerForm.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const username = document.getElementById("register-username").value.trim();
-    const password = document.getElementById("register-password").value.trim();
-    if (!username || !password) {
-      messageEl.textContent = "请输入用户名和密码";
-      return;
-    }
+// =======================
+// 登录逻辑
+// =======================
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
 
-    try {
-      // 检查用户名是否存在
-      const { data: existing } = await supabaseClient
-        .from("users")
-        .select("uuid")
-        .eq("username", username)
-        .maybeSingle();
+  if (!username || !password) {
+    alert("请输入用户名和密码");
+    return;
+  }
 
-      if (existing) {
-        messageEl.textContent = "用户名已存在";
-        return;
-      }
+  const { data, error } = await supabaseClient
+    .from("users")
+    .select("id, username, password, platform_account, uuid")
+    .eq("username", username)
+    .maybeSingle();
 
-      // 生成 session_token
-      const newToken = generateToken();
+  if (error) {
+    alert("登录失败: " + error.message);
+    return;
+  }
+  if (!data) {
+    alert("用户不存在");
+    return;
+  }
+  if (data.password !== password) {
+    alert("密码错误");
+    return;
+  }
 
-      // 插入用户，不加 .select() 让触发器生成 account
-      const { data: inserted, error: insertError } = await supabaseClient
-        .from("users")
-        .insert([{ username, password, session_token: newToken }]);
+  // 保存到 localStorage
+  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUser", data.username);
+  localStorage.setItem("platformAccount", data.platform_account);
+  localStorage.setItem("currentUserUUID", data.uuid); // 保存 UUID
 
-      if (insertError || !inserted || !inserted[0]) {
-        console.error(insertError);
-        messageEl.textContent = "注册失败，请稍后再试";
-        return;
-      }
-
-      // 再查询完整信息
-      const { data, error } = await supabaseClient
-        .from("users")
-        .select("uuid, username, account, balance, coins, session_token")
-        .eq("uuid", inserted[0].uuid)
-        .single();
-
-      if (error || !data) {
-        console.error(error);
-        messageEl.textContent = "注册失败，请稍后再试";
-        return;
-      }
-
-      // 保存到 localStorage
-      localStorage.setItem("user", JSON.stringify(data));
-      window.location.href = "frontend/HOME.html";
-
-    } catch (err) {
-      console.error(err);
-      messageEl.textContent = "注册失败，请稍后再试";
-    }
-  });
+  alert("登录成功！");
+  window.location.href = "frontend/HOME.html";
 });
