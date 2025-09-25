@@ -28,7 +28,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // 注册逻辑
+  // 注册
   document.getElementById("registerBtn").addEventListener("click", async (e) => {
     e.preventDefault();
     const username = document.getElementById("regUsername").value.trim();
@@ -48,7 +48,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .select("id")
         .eq("username", username)
         .maybeSingle();
-
       if (exist) { msg.textContent = "该用户名已存在"; return; }
 
       const platformAccount = `acc_${Math.random().toString(36).substring(2,10)}`;
@@ -58,7 +57,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .insert({ username, password, coins: 0, balance: 0, platform_account: platformAccount })
         .select()
         .single();
-
       if (error) throw error;
 
       localStorage.setItem("currentUserId", data.id);
@@ -73,7 +71,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  // 登录逻辑
+  // 登录
   document.getElementById("loginBtn").addEventListener("click", async (e) => {
     e.preventDefault();
     const username = document.getElementById("loginUsername").value.trim();
@@ -89,7 +87,6 @@ document.addEventListener("DOMContentLoaded", () => {
         .select("id, username, password, platform_account")
         .eq("username", username)
         .maybeSingle();
-
       if (error) throw error;
       if (!data) { msg.textContent = "用户不存在"; return; }
       if (data.password !== password) { msg.textContent = "密码错误"; return; }
