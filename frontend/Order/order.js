@@ -160,27 +160,36 @@ function showModal(contentHtml) {
 }
 
 /* ======================
-   自动下单（调用后端 Edge Function，支持 CORS）
+   自动下单（调用 Supabase Edge Function）
    ====================== */
 async function autoOrder() {
-  if (!window.currentUserId) { alert("请先登录！"); return; }
+  if (!window.currentUserId) { 
+    alert("请先登录！");
+    return; 
+  }
   if (ordering) return;
   ordering = true;
   setOrderBtnDisabled(true, "匹配中…");
 
   try {
-    const res = await fetch('https://owrjqbkkwdunahvzzjzc.functions.supabase.co/order', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ user_id: window.currentUserId })
-    });
+    const res = await fetch(
+      'https://owrjqbkkwdunahvzzjzc.supabase.co/functions/v1/rapid-action', 
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: window.currentUserId })
+      }
+    );
 
+    // 检查 HTTP 状态
     if (!res.ok) {
       const errData = await res.json().catch(() => ({}));
       throw new Error(errData.error || `请求失败: ${res.status}`);
     }
 
     const data = await res.json();
+
+    // 渲染订单和更新金币
     renderLastOrder(data.order, data.newCoins);
     updateCoinsUI(data.newCoins);
     await checkPendingLock();
