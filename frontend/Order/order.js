@@ -1,7 +1,12 @@
+// frontend/Order/order.js
+
+// 直接读取用户数据（me.js 已经保证用户登录）
+let user = JSON.parse(localStorage.getItem('user'));
+
 // 页面元素
 const startBtn = document.getElementById('startBtn');  // START / GO 按钮
-const orderInfo = document.getElementById('orderInfo'); // 显示提示
-const orderCardContainer = document.getElementById('orderCardContainer'); // 订单卡片容器
+const orderInfo = document.getElementById('orderInfo'); // 显示提示信息
+const orderCardContainer = document.getElementById('orderCardContainer'); // 显示订单卡片
 let roundsConfig = null;
 let isMatching = false;
 
@@ -21,7 +26,7 @@ async function fetchRoundsConfig() {
   checkStartAvailability();
 }
 
-// 检查 START/GO 按钮状态
+// 检查 START / GO 按钮状态
 function checkStartAvailability() {
   const now = new Date();
   const lastCompleted = user.last_round_completed ? new Date(user.last_round_completed) : null;
@@ -34,6 +39,7 @@ function checkStartAvailability() {
     startBtn.disabled = true;
     const remaining = Math.ceil((cooldown - (now - lastCompleted)) / 1000);
     orderInfo.textContent = `冷却中，剩余 ${remaining} 秒`;
+    // 倒计时更新
     setTimeout(checkStartAvailability, 1000);
   } else {
     startBtn.disabled = false;
@@ -45,8 +51,8 @@ function checkStartAvailability() {
 startBtn.addEventListener('click', async () => {
   if (!roundsConfig) return;
 
+  // START → GO
   if (startBtn.textContent === 'START') {
-    // 初始化轮次
     user.current_round_count = 0;
     localStorage.setItem('user', JSON.stringify(user));
     startBtn.textContent = 'GO';
@@ -54,8 +60,10 @@ startBtn.addEventListener('click', async () => {
     return;
   }
 
-  if (isMatching) return; // 匹配中不可重复点击
+  // 匹配中不可重复点击
+  if (isMatching) return;
 
+  // 判断轮次是否完成
   if (user.current_round_count >= roundsConfig.orders_per_round) {
     orderInfo.textContent = '本轮已完成，请等待冷却';
     return;
@@ -63,18 +71,10 @@ startBtn.addEventListener('click', async () => {
 
   // 开始匹配
   isMatching = true;
-  orderInfo.textContent = '正在匹配产品...';
   startBtn.disabled = true;
+  orderInfo.textContent = '正在匹配产品...';
 
-  // 获取随机产品
-  const { data: product, error } = await supabaseClient
-    .from('products')
-    .select('*')
-    .order('id', { ascending: false }) // 先随便排序
-    .limit(1)
-    .single();
-
-  // 可以使用 order by random() 在数据库端随机
+  // 随机匹配一个产品
   const { data: randomProduct, error: randErr } = await supabaseClient
     .from('products')
     .select('*')
@@ -89,7 +89,6 @@ startBtn.addEventListener('click', async () => {
     return;
   }
 
-  // 匹配等待时间
   const matchSeconds = roundsConfig.match_seconds || 30;
   orderInfo.textContent = `匹配中... ${matchSeconds} 秒`;
 
@@ -97,7 +96,6 @@ startBtn.addEventListener('click', async () => {
     // 扣 Coins
     const newCoins = Number(user.coins) - Number(randomProduct.price);
 
-    // 更新用户表 coins
     const { error: updateErr } = await supabaseClient
       .from('users')
       .update({ coins: newCoins })
@@ -111,11 +109,10 @@ startBtn.addEventListener('click', async () => {
       return;
     }
 
-    // 更新 localStorage
     user.coins = newCoins;
     localStorage.setItem('user', JSON.stringify(user));
 
-    // 创建订单记录
+    // 新建订单记录
     const { data: newOrder, error: orderErr } = await supabaseClient
       .from('orders')
       .insert([{ user_id: user.uuid, product_id: randomProduct.id }])
@@ -142,11 +139,9 @@ startBtn.addEventListener('click', async () => {
     const completeBtn = document.querySelector('.complete-btn');
     if (completeBtn) {
       completeBtn.addEventListener('click', async () => {
-        // coins + price + profit
         const returnCoins = Number(randomProduct.price) + Number(randomProduct.profit);
         const updatedCoins = Number(user.coins) + returnCoins;
 
-        // 更新用户 coins
         const { error: finishErr } = await supabaseClient
           .from('users')
           .update({ coins: updatedCoins, current_round_count: user.current_round_count + 1 })
@@ -161,7 +156,6 @@ startBtn.addEventListener('click', async () => {
         user.current_round_count += 1;
         localStorage.setItem('user', JSON.stringify(user));
 
-        // 更新订单状态
         await supabaseClient
           .from('orders')
           .update({ status: 'completed' })
@@ -170,7 +164,7 @@ startBtn.addEventListener('click', async () => {
         orderCardContainer.innerHTML = '';
         orderInfo.textContent = `完成订单 ${user.current_round_count}/${roundsConfig.orders_per_round}`;
 
-        // 判断是否轮次结束
+        // 判断轮次是否结束
         if (user.current_round_count >= roundsConfig.orders_per_round) {
           orderInfo.textContent = '本轮已完成，开始冷却';
           startBtn.disabled = true;
@@ -179,12 +173,13 @@ startBtn.addEventListener('click', async () => {
             .from('users')
             .update({ last_round_completed: new Date() })
             .eq('uuid', user.uuid);
+
           // 冷却倒计时
           setTimeout(() => {
             checkStartAvailability();
           }, roundsConfig.cooldown_seconds * 1000);
         } else {
-          startBtn.disabled = false; // 可以继续 GO
+          startBtn.disabled = false;
         }
       });
     }
