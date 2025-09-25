@@ -1,255 +1,217 @@
+// frontend/Order/order.js
 (function() {
+  const startBtn = document.getElementById('startBtn');
+  const statusContainer = document.createElement('div');
+  const recentOrderContainer = document.createElement('div');
+  const orderInfoDiv = document.getElementById('orderInfo');
+
+  orderInfoDiv.prepend(recentOrderContainer);
+  orderInfoDiv.prepend(statusContainer);
+
   let user = JSON.parse(localStorage.getItem('user'));
   if (!user || !user.uuid) {
     window.location.href = '/index.html';
-    return;
   }
-
-  const startBtn = document.getElementById('startBtn');
-  const orderInfo = document.getElementById('orderInfo');
-
-  // -------------------------
-  // 容器
-  // -------------------------
-  const statusContainer = document.createElement('div');
-  statusContainer.id = 'statusContainer';
-  startBtn.insertAdjacentElement('beforebegin', statusContainer);
-
-  const recentOrderContainer = document.createElement('div');
-  recentOrderContainer.id = 'recentOrderContainer';
-  startBtn.insertAdjacentElement('afterend', recentOrderContainer);
 
   let roundsConfig = null;
   let isMatching = false;
-  let lastOrder = null;
 
-  // -------------------------
-  // 渲染状态容器
-  // -------------------------
-  function renderStatus() {
-    const currentRound = Number(user.current_round_count) || 0;
-    const totalRound = Number(roundsConfig?.orders_per_round) || 5;
-
-    statusContainer.innerHTML = `
-      <p><strong>Coins:</strong> ${user.coins ?? 0}</p>
-      <p><strong>轮次:</strong> ${currentRound}/${totalRound}</p>
-      <p id="matchInfo"></p>
-    `;
-  }
-
-  function renderMatchInfo(text) {
-    const matchInfo = document.getElementById('matchInfo');
-    if (matchInfo) matchInfo.textContent = text;
-  }
-
-  // -------------------------
-  // 渲染最近订单
-  // -------------------------
-  function renderRecentOrder() {
-    if (!lastOrder) {
-      recentOrderContainer.innerHTML = '<p>最近订单为空</p>';
-      return;
-    }
-
-    recentOrderContainer.innerHTML = `
-      <p><strong>最近订单:</strong></p>
-      <p>产品: ${lastOrder.name}</p>
-      <p>价格: ${lastOrder.price}</p>
-      <p>利润: ${lastOrder.profit}</p>
-      <img src="${lastOrder.image_url}" alt="${lastOrder.name}" style="width:100px">
-      ${user.coins >= 0 ? `<button class="complete-btn">完成</button>` : '<p>余额不足，请充值</p>'}
-    `;
-
-    const completeBtn = recentOrderContainer.querySelector('.complete-btn');
-    if (completeBtn) {
-      completeBtn.addEventListener('click', completeOrder);
-    }
-  }
-
-  // -------------------------
   // 获取轮次配置
-  // -------------------------
   async function fetchRoundsConfig() {
     const { data, error } = await supabaseClient
       .from('rounds')
       .select('*')
       .limit(1)
       .single();
-
-    if (error || !data) {
-      console.error(error);
+    if (error) {
+      console.error('获取轮次配置失败', error);
       return;
     }
     roundsConfig = data;
-    checkStartAvailability();
+  }
+
+  // 获取最新用户信息
+  async function fetchUser() {
+    const { data, error } = await supabaseClient
+      .from('users')
+      .select('*')
+      .eq('uuid', user.uuid)
+      .single();
+
+    if (error || !data) {
+      console.error('获取用户信息失败', error);
+      return;
+    }
+
+    user = data;
+    localStorage.setItem('user', JSON.stringify(user));
     renderStatus();
     renderRecentOrder();
   }
 
-  function checkStartAvailability() {
-    const now = new Date();
-    const lastCompleted = user.last_round_completed ? new Date(user.last_round_completed) : null;
-    const cooldown = roundsConfig ? roundsConfig.cooldown_seconds * 1000 : 60000;
+  // 渲染 Coins / 轮次 / 按钮 / 倒计时
+  function renderStatus() {
+    let remainingCooldown = 0;
+    if (user.last_round_completed) {
+      const now = new Date();
+      const last = new Date(user.last_round_completed);
+      remainingCooldown = Math.max(
+        0,
+        Math.ceil((roundsConfig.cooldown_seconds * 1000 - (now - last)) / 1000)
+      );
+    }
 
-    if (user.coins < 30) {
+    const roundText = `${user.current_round_count ?? 0}/${roundsConfig.orders_per_round}`;
+
+    statusContainer.innerHTML = `
+      <p>Coins: ${user.coins ?? 0}</p>
+      <p>轮次: ${roundText}</p>
+      ${remainingCooldown > 0 ? `<p>冷却倒计时: ${remainingCooldown}s</p>` : ''}
+    `;
+
+    // 按钮状态
+    if (remainingCooldown > 0) {
       startBtn.disabled = true;
-      renderMatchInfo('Coins 不够，无法开始刷单');
-    } else if (lastCompleted && now - lastCompleted < cooldown) {
+      startBtn.textContent = '冷却中...';
+    } else if (isMatching) {
       startBtn.disabled = true;
-      const remaining = Math.ceil((cooldown - (now - lastCompleted)) / 1000);
-      renderMatchInfo(`冷却中，剩余 ${remaining} 秒`);
-      setTimeout(checkStartAvailability, 1000);
+      startBtn.textContent = '匹配中...';
     } else {
-      startBtn.disabled = false;
-      renderMatchInfo('');
+      startBtn.disabled = user.coins < 30;
+      startBtn.textContent = startBtn.dataset.started ? 'GO' : 'START';
     }
   }
 
-  // -------------------------
-  // 点击 START / GO
-  // -------------------------
-  startBtn.addEventListener('click', async () => {
-    if (!roundsConfig) return;
+  // 渲染最近订单（最新一条）
+  async function renderRecentOrder() {
+    const { data, error } = await supabaseClient
+      .from('orders')
+      .select('*, products(name, price, profit, image_url)')
+      .eq('user_uuid', user.uuid)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-    if (startBtn.textContent === 'START') {
-      // 初始化轮次到 0，并更新数据库
-      const { error } = await supabaseClient
-        .from('users')
-        .update({ current_round_count: 0 })
-        .eq('uuid', user.uuid);
-
-      if (!error) {
-        user.current_round_count = 0;
-        localStorage.setItem('user', JSON.stringify(user));
-        startBtn.textContent = 'GO';
-        renderStatus();
-      }
+    if (error || !data) {
+      recentOrderContainer.innerHTML = `<p>最近订单为空</p>`;
       return;
     }
 
-    if (isMatching) return;
-    if (user.current_round_count >= roundsConfig.orders_per_round) {
-      renderMatchInfo('本轮已完成，请等待冷却');
-      return;
-    }
+    const p = data.products;
+    recentOrderContainer.innerHTML = `
+      <h4>最近订单:</h4>
+      <p>产品: ${p.name}</p>
+      <p>价格: ${p.price}</p>
+      <p>利润: ${p.profit}</p>
+    `;
+  }
 
-    // 开始匹配
-    isMatching = true;
-    startBtn.disabled = true;
+  // 匹配产品
+  async function matchProduct() {
+    if (!roundsConfig) await fetchRoundsConfig();
 
-    const { data: products, error: prodErr } = await supabaseClient
+    // 随机匹配产品
+    const { data: products, error } = await supabaseClient
       .from('products')
-      .select('*');
+      .select('*')
+      .order('id', { ascending: false }) // Supabase v2 不能直接 random()，这里可调整
+      .limit(1);
 
-    if (prodErr || !products || products.length === 0) {
-      renderMatchInfo('匹配失败，请重试');
+    if (error || !products || products.length === 0) {
+      alert('匹配失败，请重试');
       isMatching = false;
-      startBtn.disabled = false;
+      renderStatus();
       return;
     }
 
-    const randomProduct = products[Math.floor(Math.random() * products.length)];
-    const matchSeconds = roundsConfig.match_seconds || 30;
+    const product = products[0];
 
-    let remainingTime = matchSeconds;
-    renderMatchInfo(`匹配中... ${remainingTime} 秒`);
-    const countdown = setInterval(() => {
-      remainingTime--;
-      renderMatchInfo(`匹配中... ${remainingTime} 秒`);
-      if (remainingTime <= 0) clearInterval(countdown);
-    }, 1000);
+    // 更新用户匹配状态
+    const { data: updatedUser } = await supabaseClient
+      .from('users')
+      .update({
+        coins: user.coins - product.price,
+        last_matched_product: product,
+        matching_started_at: new Date()
+      })
+      .eq('uuid', user.uuid)
+      .select()
+      .single();
 
-    setTimeout(async () => {
-      clearInterval(countdown);
-      const newCoins = Number(user.coins) - Number(randomProduct.price);
-      const { error: updateErr } = await supabaseClient
+    user = updatedUser;
+    localStorage.setItem('user', JSON.stringify(user));
+    isMatching = false;
+    renderStatus();
+    renderMatchedProduct(product);
+  }
+
+  function renderMatchedProduct(product) {
+    recentOrderContainer.innerHTML = `
+      <h4>匹配到产品:</h4>
+      <p>产品: ${product.name}</p>
+      <p>价格: ${product.price}</p>
+      <p>利润: ${product.profit}</p>
+      <img src="${product.image_url}" width="100" />
+      <button id="completeBtn">完成</button>
+    `;
+
+    const completeBtn = document.getElementById('completeBtn');
+
+    if (user.coins < 0) {
+      completeBtn.disabled = true;
+      completeBtn.textContent = '金币不足，先充值';
+    } else {
+      completeBtn.disabled = false;
+    }
+
+    completeBtn.addEventListener('click', async () => {
+      // 完成订单：增加 Coins 和利润 + 轮次++
+      const { data: updatedUser } = await supabaseClient
         .from('users')
-        .update({ coins: newCoins })
-        .eq('uuid', user.uuid);
+        .update({
+          coins: user.coins + product.price + product.profit,
+          current_round_count: (user.current_round_count ?? 0) + 1,
+          last_round_completed: (user.current_round_count + 1) >= roundsConfig.orders_per_round ? new Date() : user.last_round_completed,
+          last_matched_product: null,
+          matching_started_at: null
+        })
+        .eq('uuid', user.uuid)
+        .select()
+        .single();
 
-      if (updateErr) {
-        renderMatchInfo('扣除 Coins 失败');
-        isMatching = false;
-        startBtn.disabled = false;
-        return;
-      }
+      // 写订单历史
+      await supabaseClient.from('orders').insert({
+        user_uuid: user.uuid,
+        product_id: product.id,
+        price: product.price,
+        profit: product.profit
+      });
 
-      user.coins = newCoins;
+      user = updatedUser;
       localStorage.setItem('user', JSON.stringify(user));
-      lastOrder = randomProduct;
-
-      renderRecentOrder();
       renderStatus();
+      renderRecentOrder();
+    });
+  }
 
-      isMatching = false;
-      startBtn.disabled = false;
-    }, matchSeconds * 1000);
+  // START / GO 按钮点击
+  startBtn.addEventListener('click', async () => {
+    if (!startBtn.dataset.started) {
+      startBtn.dataset.started = true;
+    }
+    isMatching = true;
+    renderStatus();
+
+    await matchProduct();
   });
 
-  // -------------------------
-  // 完成订单
-  // -------------------------
-  async function completeOrder() {
-    const product = lastOrder;
-    if (!product) return;
+  // 页面加载
+  (async function init() {
+    await fetchRoundsConfig();
+    await fetchUser();
 
-    const returnCoins = Number(product.price) + Number(product.profit);
-    const updatedCoins = Number(user.coins) + returnCoins;
-    const newRoundCount = user.current_round_count + 1;
+    // 每秒刷新状态（倒计时 / Coins / 轮次）
+    setInterval(fetchUser, 1000);
+  })();
 
-    const updates = {
-      coins: updatedCoins,
-      current_round_count: newRoundCount
-    };
-    if (newRoundCount >= roundsConfig.orders_per_round) {
-      updates.last_round_completed = new Date();
-    }
-
-    const { error: finishErr } = await supabaseClient
-      .from('users')
-      .update(updates)
-      .eq('uuid', user.uuid);
-
-    if (finishErr) console.error(finishErr);
-
-    user.coins = updatedCoins;
-    user.current_round_count = newRoundCount;
-    if (newRoundCount >= roundsConfig.orders_per_round) {
-      user.last_round_completed = updates.last_round_completed;
-    }
-    localStorage.setItem('user', JSON.stringify(user));
-
-    lastOrder = product;
-
-    renderRecentOrder();
-    renderMatchInfo(`完成订单 ${user.current_round_count}/${roundsConfig.orders_per_round}`);
-    renderStatus();
-
-    if (user.current_round_count >= roundsConfig.orders_per_round) {
-      startBtn.disabled = true;
-      startBtn.textContent = 'START';
-      startCooldown();
-    }
-  }
-
-  // -------------------------
-  // 冷却倒计时
-  // -------------------------
-  function startCooldown() {
-    const cooldown = roundsConfig.cooldown_seconds || 60;
-    let remaining = cooldown;
-    const interval = setInterval(() => {
-      remaining--;
-      renderMatchInfo(`冷却中，剩余 ${remaining} 秒`);
-      renderStatus();
-      if (remaining <= 0) {
-        clearInterval(interval);
-        user.current_round_count = 0;
-        localStorage.setItem('user', JSON.stringify(user));
-        checkStartAvailability();
-      }
-    }, 1000);
-  }
-
-  fetchRoundsConfig();
 })();
