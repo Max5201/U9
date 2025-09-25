@@ -54,6 +54,7 @@ async function loadRoundConfig() {
   }
 }
 
+
 /* ====================== 11.自动下单 ====================== */
 async function autoOrder() {
   if (!window.currentUserUUID) {
@@ -66,7 +67,7 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 先检查是否存在未完成订单
+    // 检查是否有未完成订单
     const { data: pend } = await supabaseClient
       .from("orders")
       .select("id")
@@ -82,7 +83,6 @@ async function autoOrder() {
 
     // 调用 RPC 自动下单
     const { data, error } = await supabaseClient.rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
-
     if (error) throw error;
     if (!data || data.length === 0) {
       alert("当前无法下单，请稍后再试");
@@ -101,9 +101,8 @@ async function autoOrder() {
       localStorage.setItem("currentRoundId", order.round_id);
     }
 
-    // ✅ 进入匹配倒计时
+    // 匹配倒计时
     const delaySec = Math.floor(Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)) + window.MATCH_MIN_SECONDS;
-
     localStorage.setItem("matchingEndTime", Date.now() + delaySec * 1000);
     localStorage.setItem("matchingProductId", order.product_id);
 
@@ -122,7 +121,6 @@ async function autoOrder() {
   }
 }
 
-
 /* ====================== 12.匹配倒计时 ====================== */
 function startMatchingCountdown(product, delaySec) {
   const endTime = Date.now() + delaySec * 1000;
@@ -137,6 +135,59 @@ function startMatchingCountdown(product, delaySec) {
     }
   };
   tick();
+}
+
+/* ====================== 14.匹配完成后的订单生成 ====================== */
+async function finalizeMatchedOrder(product) {
+  try {
+    const { data: user } = await supabaseClient
+      .from("users")
+      .select("coins")
+      .eq("id", window.currentUserId)
+      .single();
+
+    let coins = Number(user?.coins || 0);
+    const price = Number(product.price) || 0;
+    const profitRatio = Number(product.profit) || 0;
+    const profit = +(price * profitRatio).toFixed(2);
+    const tempCoins = coins - price;
+
+    // 扣除用户金币
+    await supabaseClient
+      .from("users")
+      .update({ coins: tempCoins })
+      .eq("id", window.currentUserId);
+
+    // 插入订单
+    const { data: newOrder, error: insErr } = await supabaseClient
+      .from("orders")
+      .insert({
+        user_id: window.currentUserId,
+        product_id: product.id,
+        total_price: price,
+        profit: profit,
+        status: "pending",
+        round_id: window.currentRoundId,
+      })
+      .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
+      .single();
+
+    if (insErr) throw insErr;
+
+    // ✅ 渲染订单 & 更新 UI
+    renderLastOrder(newOrder, tempCoins);
+    updateCoinsUI(tempCoins);
+    await checkPendingLock();
+    await loadRecentOrders();
+    await updateRoundProgress();
+
+    // ✅ 清除本地匹配缓存
+    localStorage.removeItem("matchingEndTime");
+    localStorage.removeItem("matchingProductId");
+
+  } catch (e) {
+    alert(e.message || "生成订单失败");
+  }
 }
 
 /* ====================== 15.冷却倒计时 ====================== */
@@ -161,6 +212,7 @@ function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待"
   tick();
   cooldownTimer = setInterval(tick, 1000);
 }
+
 
 
 /* ====================== 3.工具函数 ====================== */
@@ -391,60 +443,6 @@ function restoreMatchingIfAny() {
     localStorage.removeItem("matchingProductId");
   }
 }
-
-/* ====================== 14.匹配完成后的订单生成 ====================== */
-async function finalizeMatchedOrder(product) {
-  try {
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
-
-    let coins = Number(user?.coins || 0);
-    const price = Number(product.price) || 0;
-    const profitRatio = Number(product.profit) || 0;
-    const profit = +(price * profitRatio).toFixed(2);
-    const tempCoins = coins - price;
-
-    // 扣除用户金币
-    await supabaseClient
-      .from("users")
-      .update({ coins: tempCoins })
-      .eq("id", window.currentUserId);
-
-    // 插入订单
-    const { data: newOrder, error: insErr } = await supabaseClient
-      .from("orders")
-      .insert({
-        user_id: window.currentUserId,
-        product_id: product.id,
-        total_price: price,
-        profit: profit,
-        status: "pending",
-        round_id: window.currentRoundId,
-      })
-      .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
-      .single();
-
-    if (insErr) throw insErr;
-
-    // ✅ 渲染订单 & 更新 UI
-    renderLastOrder(newOrder, tempCoins);
-    updateCoinsUI(tempCoins);
-    await checkPendingLock();
-    await loadRecentOrders();
-    await updateRoundProgress();
-
-    // ✅ 清除本地匹配缓存
-    localStorage.removeItem("matchingEndTime");
-    localStorage.removeItem("matchingProductId");
-
-  } catch (e) {
-    alert(e.message || "生成订单失败");
-  }
-}
-
 
 
 /* ====================== 16.检查本轮 Coins → Balance 是否可用 ====================== */
