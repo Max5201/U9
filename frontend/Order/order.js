@@ -18,7 +18,7 @@ if (!window.supabaseClient) {
   console.error("❌ supabaseClient 未初始化！");
 }
 
-/* ====================== 2.读取轮次配置 (每轮单数 & 冷却分钟) ====================== */
+/* ====================== 2.读取轮次配置 (每轮单数 & 匹配区间) ====================== */
 async function loadRoundConfig() {
   try {
     const { data, error } = await supabaseClient
@@ -33,7 +33,6 @@ async function loadRoundConfig() {
       window.ROUND_DURATION_MINUTES = Number(data.round_duration);
       window.ROUND_DURATION = window.ROUND_DURATION_MINUTES * 60 * 1000;
 
-      // 🔥 新增：匹配时间区间
       window.MATCH_MIN_SECONDS = Number(data.match_min_seconds) || 5;
       window.MATCH_MAX_SECONDS = Number(data.match_max_seconds) || 15;
 
@@ -46,6 +45,7 @@ async function loadRoundConfig() {
     }
   } catch (e) {
     console.error("❌ 读取配置失败", e.message);
+    // 出错时默认值
     if (!window.ORDERS_PER_ROUND) window.ORDERS_PER_ROUND = 3;
     if (!window.ROUND_DURATION_MINUTES) window.ROUND_DURATION_MINUTES = 5;
     if (!window.MATCH_MIN_SECONDS) window.MATCH_MIN_SECONDS = 5;
@@ -260,9 +260,9 @@ async function checkPendingLock() {
   }
 }
 
-/* ====================== 11.订单 ====================== */
+/* ====================== 11.一键下单 ====================== */
 async function autoOrder() {
-  if (!window.currentUserId) {
+  if (!window.currentUserUUID) {
     alert("请先登录！");
     return;
   }
@@ -272,119 +272,59 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 🔹 开启新轮次（如不存在）
-    if (!window.currentRoundId) startNewRound();
+    // 调用后端 RPC 生成订单
+    const { data, error } = await supabaseClient
+      .rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
 
-    // 🔹 检查本轮已完成订单数
-    const { data: roundOrders } = await supabaseClient
-      .from("orders")
-      .select("id,status")
-      .eq("user_id", window.currentUserId)
-      .eq("round_id", window.currentRoundId);
+    if (error) throw error;
+    if (!data) throw new Error("下单失败：未返回订单数据");
 
-    const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
-    if (completedCount >= window.ORDERS_PER_ROUND) {
-      const cooldown = await checkOrderCooldown();
-      if (cooldown.next_allowed) {
-        startCooldownTimer(cooldown.next_allowed, "本轮已完成全部订单，冷却中，请等待");
-      }
-      alert("本轮已完成全部订单，进入冷却…");
+    const order = data[0]; // RPC 返回表格形式
+    window.currentRoundId = order.round_id;
+    localStorage.setItem("currentRoundId", order.round_id);
+    if (order.cooldown && order.next_allowed) {
+      startCooldownTimer(order.next_allowed, "本轮已完成全部订单，冷却中，请等待");
       ordering = false;
       return;
     }
 
-    // 🔹 获取用户 Coins
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
-    const coins = Number(user?.coins || 0);
-    if (coins < 50) {
-      alert("你的余额不足，最少需要 50 coins");
-      setOrderBtnDisabled(false);
-      ordering = false;
-      return;
-    }
+    // 保存匹配结束时间，用于倒计时
+    const matchEndTime = new Date(order.match_end_time).getTime();
+    localStorage.setItem("matchingEndTime", matchEndTime);
+    localStorage.setItem("matchingProductId", order.product_id);
 
-    // 🔹 检查未完成订单
-    const { data: pend } = await supabaseClient
-      .from("orders")
-      .select("id")
-      .eq("user_id", window.currentUserId)
-      .eq("status", "pending")
-      .limit(1);
-    if (pend?.length) {
-      alert("您有未完成订单，请先完成订单再继续下单。");
-      await checkPendingLock();
-      ordering = false;
-      return;
-    }
-
-    // 🔹 选择商品（规则或随机）
-    let product;
-    const totalOrdersRes = await supabaseClient
-      .from("orders")
-      .select("id", { count: "exact", head: true })
-      .eq("user_id", window.currentUserId);
-    const orderNumber = (totalOrdersRes?.count || 0) + 1;
-
-    const ruleProductId = await getUserRuleProduct(window.currentUserId, orderNumber);
-    if (ruleProductId) {
-      const { data: pData, error } = await supabaseClient
-        .from("products")
-        .select("*")
-        .eq("id", ruleProductId)
-        .single();
-      if (!error && pData) product = pData;
-    }
-    if (!product) product = await getRandomProduct();
-
-    // 🔹 生成随机匹配时间
-    let delaySec = Math.floor(
-      Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)
-    ) + window.MATCH_MIN_SECONDS;
-
-    // 🔹 保存匹配结束时间和产品信息（本地存储，刷新保持状态）
-    const matchingEndTime = Date.now() + delaySec * 1000;
-    localStorage.setItem("matchingEndTime", matchingEndTime);
-    localStorage.setItem("matchingProductId", product.id);
-
-    // 🔹 启动匹配倒计时
-    startMatchingCountdown(product, delaySec);
+    // 启动匹配倒计时
+    startMatchingCountdown(order);
 
   } catch (e) {
     alert(e.message || "下单失败");
-    setMatchingState(false); // 出错也隐藏 GIF
+    setMatchingState(false);
   } finally {
     ordering = false;
   }
 }
 
-/* ====================== 12.匹配倒计时函数（刷新保持状态） ====================== */
-function startMatchingCountdown(product, delaySec) {
-  const endTime = Date.now() + delaySec * 1000;
-  const btn = document.getElementById("autoOrderBtn");
-  const gifEl = document.getElementById("matchingGif");
 
+/* ====================== 12.匹配倒计时函数 ====================== */
+function startMatchingCountdown(order) {
+  const endTime = new Date(order.match_end_time).getTime();
   const tick = () => {
     const remaining = Math.ceil((endTime - Date.now()) / 1000);
-
     if (remaining > 0) {
-      setMatchingState(true); // ✅ 使用统一函数显示匹配状态
+      setMatchingState(true); // 显示匹配动画/禁用按钮
       requestAnimationFrame(tick);
     } else {
-      setMatchingState(false); // 匹配完成，恢复按钮
+      setMatchingState(false);
       localStorage.removeItem("matchingEndTime");
       localStorage.removeItem("matchingProductId");
-
-      // 下单逻辑
-      finalizeMatchedOrder(product);
+      renderLastOrder(order, order.total_price); // 显示刚下的订单
+      updateCoinsUI(Number(order.total_price)); // 更新金币
+      updateRoundProgress(); // 更新本轮完成数
     }
   };
-
   tick();
 }
+
 
 /* ====================== 13.页面刷新恢复匹配状态 ====================== */
 function restoreMatchingIfAny() {
