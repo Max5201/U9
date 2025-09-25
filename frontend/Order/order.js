@@ -54,6 +54,103 @@ async function loadRoundConfig() {
   }
 }
 
+/* ====================== 11.自动下单 ====================== */
+async function autoOrder() {
+  if (!window.currentUserUUID) {
+    alert("请先登录！");
+    return;
+  }
+  if (ordering) return;
+  ordering = true;
+
+  try {
+    await loadRoundConfig();
+
+    // 调用 RPC 自动下单
+    const { data, error } = await supabaseClient
+      .rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
+
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      alert("当前无法下单，请稍后再试");
+      ordering = false;
+      return;
+    }
+
+    const order = data[0];
+
+    // 更新前端 Coins
+    updateCoinsUI(order.coins_after || 0);
+
+    // 冷却处理
+    if (order.cooldown && order.next_allowed) {
+      startCooldownTimer(order.next_allowed, "冷却中，请等待");
+    }
+
+    // 保存轮次信息
+    if (order.round_id) {
+      window.currentRoundId = order.round_id;
+      localStorage.setItem("currentRoundId", order.round_id);
+    }
+
+    renderLastOrder({
+      id: order.order_id,
+      total_price: order.total_price,
+      profit: order.profit,
+      status: order.cooldown ? "pending" : "completed",
+      created_at: new Date(),
+      products: { name: order.product_name, profit: order.profit / order.total_price }
+    }, order.coins_after || 0);
+
+    await updateRoundProgress();
+
+  } catch (e) {
+    console.error("下单失败：", e);
+    alert("下单失败：" + (e.message || e));
+  } finally {
+    ordering = false;
+  }
+}
+
+/* ====================== 12.匹配倒计时 ====================== */
+function startMatchingCountdown(product, delaySec) {
+  const endTime = Date.now() + delaySec * 1000;
+  const tick = () => {
+    const remaining = Math.ceil((endTime - Date.now()) / 1000);
+    setMatchingState(remaining > 0);
+
+    if (remaining > 0) {
+      requestAnimationFrame(tick);
+    } else {
+      finalizeMatchedOrder(product);
+    }
+  };
+  tick();
+}
+
+/* ====================== 15.冷却倒计时 ====================== */
+function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待") {
+  if (!nextAllowed) return;
+
+  if (cooldownTimer) clearInterval(cooldownTimer);
+
+  const tick = () => {
+    const sec = Math.ceil((new Date(nextAllowed).getTime() - Date.now()) / 1000);
+    if (sec <= 0) {
+      clearInterval(cooldownTimer);
+      setOrderBtnDisabled(false);
+      window.currentRoundId = null;
+      localStorage.removeItem("currentRoundId");
+      updateRoundProgress();
+    } else {
+      setOrderBtnDisabled(true, `${messagePrefix} ${formatTime(sec)}`, `冷却剩余时间：${formatTime(sec)}`);
+    }
+  };
+
+  tick();
+  cooldownTimer = setInterval(tick, 1000);
+}
+
 
 /* ====================== 3.工具函数 ====================== */
 function setOrderBtnDisabled(disabled, reason = "", cooldownText = "") {
@@ -262,82 +359,6 @@ async function checkPendingLock() {
   }
 }
 
-/* ====================== 11.自动下单 ====================== */
-async function autoOrder() {
-  if (!window.currentUserUUID) {
-    alert("请先登录！");
-    return;
-  }
-  if (ordering) return;
-  ordering = true;
-
-  try {
-    await loadRoundConfig();
-
-    // 调用 RPC 下单
-    const { data, error } = await supabaseClient
-      .rpc("rpc_auto_order", { p_uid: window.currentUserUUID });
-
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      alert("当前无法下单，请稍后再试");
-      ordering = false;
-      return;
-    }
-
-    const order = data[0];
-
-    // 更新前端 Coins
-    updateCoinsUI(order.coins_after || 0);
-
-    // 冷却处理
-    if (order.cooldown && order.next_allowed) {
-      startCooldownTimer(order.next_allowed, "冷却中，请等待");
-    }
-
-    // 保存轮次信息
-    if (order.round_id) {
-      window.currentRoundId = order.round_id;
-      localStorage.setItem("currentRoundId", order.round_id);
-    }
-
-    renderLastOrder({
-      id: order.order_id,
-      total_price: order.total_price,
-      profit: order.profit,
-      status: order.cooldown ? "pending" : "completed",
-      created_at: new Date(),
-      products: { name: order.product_name, profit: order.profit / order.total_price }
-    }, order.coins_after || 0);
-
-    await updateRoundProgress();
-
-  } catch (e) {
-    alert("下单失败：" + (e.message || e));
-  } finally {
-    ordering = false;
-  }
-}
-
-
-
-/* ====================== 12.匹配倒计时 ====================== */
-function startMatchingCountdown(product, delaySec) {
-  const endTime = Date.now() + delaySec * 1000;
-  const tick = () => {
-    const remaining = Math.ceil((endTime - Date.now()) / 1000);
-    setMatchingState(remaining > 0);
-
-    if (remaining > 0) {
-      requestAnimationFrame(tick);
-    } else {
-      finalizeMatchedOrder(product); // 下单
-    }
-  };
-  tick();
-}
-
-
 
 /* ====================== 13.页面刷新恢复匹配状态 ====================== */
 function restoreMatchingIfAny() {
@@ -406,28 +427,6 @@ async function finalizeMatchedOrder(product) {
 
 // 页面加载时恢复匹配状态
 document.addEventListener("DOMContentLoaded", restoreMatchingIfAny);
-
-/* ====================== 15.冷却倒计时 ====================== */
-function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待") {
-  if (!nextAllowed) return;
-
-  const tick = () => {
-    const sec = Math.ceil((new Date(nextAllowed).getTime() - Date.now()) / 1000);
-    if (sec <= 0) {
-      clearInterval(cooldownTimer);
-      setOrderBtnDisabled(false);
-      window.currentRoundId = null; // 重置轮次
-      localStorage.removeItem("currentRoundId");
-      updateRoundProgress();
-    } else {
-      setOrderBtnDisabled(true, `${messagePrefix} ${formatTime(sec)}`, `冷却剩余时间：${formatTime(sec)}`);
-    }
-  };
-
-  tick();
-  if (cooldownTimer) clearInterval(cooldownTimer);
-  cooldownTimer = setInterval(tick, 1000);
-}
 
 
 /* ====================== 16.检查本轮 Coins → Balance 是否可用 ====================== */
