@@ -4,9 +4,9 @@
 window.currentUserId = localStorage.getItem("currentUserId");
 window.currentUsername = localStorage.getItem("currentUser");
 
-let ordering = false;      // 下单中的并发保护
-let completing = false;    // 完成订单中的并发保护
-let exchanging = false;    // Balance -> Coins 兑换中的并发保护
+let ordering = false;
+let completing = false;
+let exchanging = false;
 
 if (!window.supabaseClient) {
   console.error("❌ supabaseClient 未初始化！");
@@ -160,7 +160,7 @@ function showModal(contentHtml) {
 }
 
 /* ======================
-   自动下单（调用后端 Edge Function）
+   自动下单（调用后端 Edge Function，支持 CORS）
    ====================== */
 async function autoOrder() {
   if (!window.currentUserId) { alert("请先登录！"); return; }
