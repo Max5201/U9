@@ -81,25 +81,21 @@ async function autoOrder() {
     // 更新前端 Coins
     updateCoinsUI(order.coins_after || 0);
 
-    // 冷却处理
-    if (order.cooldown && order.next_allowed) {
-      startCooldownTimer(order.next_allowed, "冷却中，请等待");
-    }
-
     // 保存轮次信息
     if (order.round_id) {
       window.currentRoundId = order.round_id;
       localStorage.setItem("currentRoundId", order.round_id);
     }
 
-    renderLastOrder({
-      id: order.order_id,
-      total_price: order.total_price,
-      profit: order.profit,
-      status: order.cooldown ? "pending" : "completed",
-      created_at: new Date(),
-      products: { name: order.product_name, profit: order.profit / order.total_price }
-    }, order.coins_after);
+    // ✅ 进入匹配倒计时
+    const delaySec = Math.floor(Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)) + window.MATCH_MIN_SECONDS;
+
+    // 本地保存匹配状态（防止刷新丢失）
+    localStorage.setItem("matchingEndTime", Date.now() + delaySec * 1000);
+    localStorage.setItem("matchingProductId", order.product_id);
+
+    // 启动匹配倒计时
+    startMatchingCountdown({ id: order.product_id, name: order.product_name, price: order.total_price, profit: order.profit / order.total_price }, delaySec);
 
     await updateRoundProgress();
 
@@ -110,6 +106,7 @@ async function autoOrder() {
     ordering = false;
   }
 }
+
 
 /* ====================== 12.匹配倒计时 ====================== */
 function startMatchingCountdown(product, delaySec) {
@@ -413,11 +410,16 @@ async function finalizeMatchedOrder(product) {
       .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
       .single();
 
+    // ✅ 渲染订单
     renderLastOrder(newOrder, tempCoins);
     updateCoinsUI(tempCoins);
     await checkPendingLock();
     await loadRecentOrders();
     await updateRoundProgress();
+
+    // ✅ 清除本地匹配缓存
+    localStorage.removeItem("matchingEndTime");
+    localStorage.removeItem("matchingProductId");
 
   } catch (e) {
     alert(e.message || "生成订单失败");
