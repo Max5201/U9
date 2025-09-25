@@ -1,1 +1,62 @@
+body {
+  font-family: sans-serif;
+  background: #f9f9f9;
+  margin: 0;
+  padding: 0;
+}
 
+.container {
+  max-width: 600px;
+  margin: 20px auto;
+  padding: 15px;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+}
+
+h1, h3 {
+  text-align: center;
+}
+
+.user-info p {
+  margin: 5px 0;
+}
+
+.user-actions button {
+  margin-right: 10px;
+  padding: 6px 12px;
+}
+
+.primary-btn {
+  display: block;
+  width: 100%;
+  padding: 10px;
+  margin: 15px 0;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.order-section {
+  text-align: center;
+}
+
+.order-history ul {
+  padding-left: 20px;
+}
+
+.modal {
+  position: fixed;
+  top:0; left:0; right:0; bottom:0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0,0,0,0.5);
+}
+
+.modal.hidden { display: none; }
+
+.modal-content {
+  background: #fff;
+  padding: 20px;
+  border-radius: 8px;
+}
