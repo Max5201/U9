@@ -36,7 +36,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const { data, error } = await supabaseClient
         .from("users")
-        .select("*")
+        .select("uuid, username, account, balance, coins")
         .eq("username", username)
         .eq("password", password)
         .single();
@@ -44,6 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (error || !data) {
         messageEl.textContent = "用户名或密码错误";
       } else {
+        // 保存必要字段到 localStorage
         localStorage.setItem("user", JSON.stringify(data));
         window.location.href = "frontend/HOME.html";
       }
@@ -81,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const { data, error } = await supabaseClient
         .from("users")
         .insert([{ username, password }])
-        .select()
+        .select("uuid, username, account, balance, coins")
         .single();
 
       if (error || !data) {
