@@ -1,56 +1,152 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>U9</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="index.css" />
+// =======================
+// 密码可见切换
+// =======================
+window.togglePassword = function (id, el) {
+  const input = document.getElementById(id);
+  if (!input) return;
+  if (input.type === "password") {
+    input.type = "text";
+    el.textContent = "🙈";
+  } else {
+    input.type = "password";
+    el.textContent = "👁️";
+  }
+};
 
-  <!-- Supabase SDK -->
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="supabaseClient.js"></script>
-</head>
-<body>
-  <div class="container">
-    <h1 class="title">Welcome</h1>
-    <p class="desc">Please register or login below:</p>
+// =======================
+// 登录 / 注册 Tab 切换
+// =======================
+const loginForm = document.getElementById("loginForm");
+const registerForm = document.getElementById("registerForm");
+const showLoginBtn = document.getElementById("showLogin");
+const showRegisterBtn = document.getElementById("showRegister");
 
-    <!-- Tab -->
-    <div class="tab-container">
-      <button id="showLogin" class="tab-btn active">Login</button>
-      <button id="showRegister" class="tab-btn">Register</button>
-    </div>
+showLoginBtn.addEventListener("click", () => {
+  loginForm.classList.remove("hidden");
+  registerForm.classList.add("hidden");
+  showLoginBtn.classList.add("active");
+  showRegisterBtn.classList.remove("active");
+});
 
-    <!-- 登录 -->
-    <div id="loginForm" class="form-container">
-      <input type="text" id="loginUsername" placeholder="Username" />
-      <div class="password-wrapper">
-        <input type="password" id="loginPassword" placeholder="Password" />
-        <button type="button" class="toggle-password" data-target="loginPassword">👁️</button>
-      </div>
-      <div id="loginMsg" class="form-msg"></div>
-      <button id="loginBtn" class="primary-btn">Login</button>
-    </div>
+showRegisterBtn.addEventListener("click", () => {
+  loginForm.classList.add("hidden");
+  registerForm.classList.remove("hidden");
+  showLoginBtn.classList.remove("active");
+  showRegisterBtn.classList.add("active");
+});
 
-    <!-- 注册 -->
-    <div id="registerForm" class="form-container hidden">
-      <input type="text" id="regUsername" placeholder="Username" />
-      <div class="password-wrapper">
-        <input type="password" id="regPassword" placeholder="Password" />
-        <button type="button" class="toggle-password" data-target="regPassword">👁️</button>
-      </div>
-      <div class="password-wrapper">
-        <input type="password" id="regConfirmPassword" placeholder="Confirm Password" />
-        <button type="button" class="toggle-password" data-target="regConfirmPassword">👁️</button>
-      </div>
-      <label class="agreement">
-        <input type="checkbox" id="agreeTerms" /> I agree to the terms
-      </label>
-      <div id="registerMsg" class="form-msg"></div>
-      <button id="registerBtn" class="primary-btn">Register</button>
-    </div>
-  </div>
+// =======================
+// 生成随机平台账号（2位大写字母 + 4位数字，如 AB1234）
+// =======================
+function generatePlatformAccount() {
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  const numbers = "0123456789";
+  let acc = "";
+  for (let i = 0; i < 2; i++) acc += letters[Math.floor(Math.random() * letters.length)];
+  for (let i = 0; i < 4; i++) acc += numbers[Math.floor(Math.random() * numbers.length)];
+  return acc;
+}
 
-  <script src="index.js"></script>
-</body>
-</html>
+// =======================
+// 注册逻辑
+// =======================
+document.getElementById("registerBtn").addEventListener("click", async () => {
+  const username = document.getElementById("regUsername").value.trim();
+  const password = document.getElementById("regPassword").value;
+  const confirm = document.getElementById("regConfirmPassword").value;
+  const agree = document.getElementById("agreeTerms").checked;
+
+  if (!username || !password) {
+    alert("请输入用户名和密码");
+    return;
+  }
+  if (password !== confirm) {
+    alert("两次输入的密码不一致");
+    return;
+  }
+  if (!agree) {
+    alert("请先勾选同意条款");
+    return;
+  }
+
+  // 检查是否已有用户
+  const { data: exist } = await supabaseClient
+    .from("users")
+    .select("id")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (exist) {
+    alert("该用户名已存在，请换一个");
+    return;
+  }
+
+  // 生成平台账号
+  const platformAccount = generatePlatformAccount();
+
+  // 插入新用户
+  const { data, error } = await supabaseClient
+    .from("users")
+    .insert({
+      username,
+      password, // ⚠️ 明文存储不安全，建议 hash
+      coins: 0,
+      balance: 0,
+      platform_account: platformAccount
+    })
+    .select()
+    .single();
+
+  if (error) {
+    alert("注册失败: " + error.message);
+    return;
+  }
+
+  // 保存到 localStorage
+  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUser", data.username);
+  localStorage.setItem("platformAccount", data.platform_account);
+
+  alert("注册成功！");
+  window.location.href = "frontend/HOME.html";
+});
+
+// =======================
+// 登录逻辑
+// =======================
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const username = document.getElementById("loginUsername").value.trim();
+  const password = document.getElementById("loginPassword").value;
+
+  if (!username || !password) {
+    alert("请输入用户名和密码");
+    return;
+  }
+
+  const { data, error } = await supabaseClient
+    .from("users")
+    .select("id, username, password, platform_account")
+    .eq("username", username)
+    .maybeSingle();
+
+  if (error) {
+    alert("登录失败: " + error.message);
+    return;
+  }
+  if (!data) {
+    alert("用户不存在");
+    return;
+  }
+  if (data.password !== password) {
+    alert("密码错误");
+    return;
+  }
+
+  // 保存到 localStorage
+  localStorage.setItem("currentUserId", data.id);
+  localStorage.setItem("currentUser", data.username);
+  localStorage.setItem("platformAccount", data.platform_account);
+
+  alert("登录成功！");
+  window.location.href = "frontend/HOME.html";
+});
