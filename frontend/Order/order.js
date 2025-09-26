@@ -281,13 +281,21 @@ async function autoOrder() {
     // 🔹 拉取最新用户信息和轮次
     const { data: user, error } = await supabaseClient
       .from("users")
-      .select("coins, current_round_id")
+      .select("id, coins, current_round_id")
       .eq("uuid", window.currentUserUUID)
       .single();
     if (error || !user) throw new Error("加载用户信息失败");
 
+    // 🔹 确保 currentRoundId 已初始化
     window.currentRoundId = user.current_round_id || crypto.randomUUID();
     localStorage.setItem("currentRoundId", window.currentRoundId);
+
+    if (!user.current_round_id) {
+      await supabaseClient
+        .from("users")
+        .update({ current_round_id: window.currentRoundId, round_start_time: Date.now() })
+        .eq("uuid", window.currentUserUUID);
+    }
 
     const currentRoundId = window.currentRoundId;
 
@@ -295,7 +303,7 @@ async function autoOrder() {
     const { data: roundOrders } = await supabaseClient
       .from("orders")
       .select("id,status")
-      .eq("user_id", window.currentUserId)
+      .eq("user_id", user.id)
       .eq("round_id", currentRoundId);
 
     const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
@@ -319,7 +327,7 @@ async function autoOrder() {
     const { data: pend } = await supabaseClient
       .from("orders")
       .select("id")
-      .eq("user_id", window.currentUserId)
+      .eq("user_id", user.id)
       .eq("status", "pending")
       .limit(1);
     if (pend?.length) {
@@ -329,15 +337,15 @@ async function autoOrder() {
       return;
     }
 
-    // 🔹 随机选择商品并匹配（略，保持原逻辑）
+    // 🔹 随机选择商品并匹配
     let product;
     const totalOrdersRes = await supabaseClient
       .from("orders")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", window.currentUserId);
+      .eq("user_id", user.id);
     const orderNumber = (totalOrdersRes?.count || 0) + 1;
 
-    const ruleProductId = await getUserRuleProduct(window.currentUserId, orderNumber);
+    const ruleProductId = await getUserRuleProduct(user.id, orderNumber);
     if (ruleProductId) {
       const { data: pData, error } = await supabaseClient
         .from("products")
