@@ -270,7 +270,7 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 读取数据库当前轮次
+    // 读取数据库当前轮次和 Coins
     const { data: user } = await supabaseClient
       .from("users")
       .select("current_round, coins")
@@ -287,22 +287,20 @@ async function autoOrder() {
       .eq("round_id", currentRound);
 
     const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
+    
     if (completedCount >= window.ORDERS_PER_ROUND) {
-      const cooldown = await checkOrderCooldown();
-      if (cooldown.next_allowed) {
-        startCooldownTimer(cooldown.next_allowed, "本轮已完成全部订单，冷却中，请等待");
-      }
-      alert("本轮已完成全部订单，进入冷却…");
+      // 🔹 更新用户轮次
+      await supabaseClient
+        .from("users")
+        .update({ current_round: currentRound + 1 })
+        .eq("id", window.currentUserId);
+
+      alert(`本轮已完成，轮次自动升级到 ${currentRound + 1}`);
       ordering = false;
       return;
     }
 
-    // 🔹 获取用户 Coins
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
+    // 🔹 Coins 检查
     const coins = Number(user?.coins || 0);
     if (coins < 50) {
       alert("你的余额不足，最少需要 50 coins");
