@@ -81,8 +81,9 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
     return;
   }
 
-  // 生成平台账号
+  // 生成平台账号和 UUID
   const platformAccount = generatePlatformAccount();
+  const uuid = crypto.randomUUID();
 
   // 插入新用户
   const { data, error } = await supabaseClient
@@ -92,7 +93,10 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
       password, // ⚠️ 明文存储不安全，建议 hash
       coins: 0,
       balance: 0,
-      platform_account: platformAccount
+      platform_account: platformAccount,
+      uuid,
+      current_round_id: uuid, // 初始轮次 UUID
+      round_start_time: Date.now()
     })
     .select()
     .single();
@@ -106,6 +110,9 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
+  localStorage.setItem("currentUserUUID", data.uuid);
+  localStorage.setItem("currentRoundId", data.current_round_id);
+  localStorage.setItem("roundStartTime", data.round_start_time);
 
   alert("注册成功！");
   window.location.href = "frontend/HOME.html";
@@ -125,7 +132,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 
   const { data, error } = await supabaseClient
     .from("users")
-    .select("id, username, password, platform_account")
+    .select("id, username, password, platform_account, uuid, current_round_id, round_start_time")
     .eq("username", username)
     .maybeSingle();
 
@@ -146,6 +153,9 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
+  localStorage.setItem("currentUserUUID", data.uuid);
+  localStorage.setItem("currentRoundId", data.current_round_id || crypto.randomUUID());
+  localStorage.setItem("roundStartTime", data.round_start_time || Date.now());
 
   alert("登录成功！");
   window.location.href = "frontend/HOME.html";
