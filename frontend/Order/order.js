@@ -689,3 +689,9 @@ function setMatchingState(isMatching) {
     btn.textContent = isMatching ? "🎲 正在匹配..." : "🎲 一键刷单";
   }
 }
+
+/* ====================== 21.更新金币显示 ====================== */
+function updateCoinsUI(coins) {
+  const coinsEl = document.getElementById("ordercoins");
+  if (coinsEl) coinsEl.textContent = (Number(coins) || 0).toFixed(2);
+}
