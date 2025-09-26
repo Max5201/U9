@@ -1,9 +1,9 @@
 /* ====================== 1.初始化用户信息 ====================== */
 window.currentUserId = localStorage.getItem("currentUserId");
 window.currentUsername = localStorage.getItem("currentUser");
-window.currentUserUUID = localStorage.getItem("currentUserUUID"); // 新增 UUID
-window.currentRoundId = localStorage.getItem("currentRoundId");   // 当前轮次 UUID
-window.roundStartTime = localStorage.getItem("roundStartTime");   // 当前轮次开始时间
+window.currentUserUUID = localStorage.getItem("currentUserUUID"); // UUID 用户
+window.currentRoundId = null;   // 前端当前轮次
+window.roundStartTime = null;   // 当前轮次开始时间
 
 let ordering = false;
 let completing = false;
@@ -16,6 +16,34 @@ window.ROUND_DURATION = 5 * 60 * 1000;
 if (!window.supabaseClient) {
   console.error("❌ supabaseClient 未初始化！");
 }
+
+// 🔹 从数据库同步最新轮次
+async function syncUserRound() {
+  if (!window.currentUserUUID) return;
+
+  try {
+    const { data: user, error } = await supabaseClient
+      .from("users")
+      .select("current_round_id, round_start_time, coins, balance")
+      .eq("uuid", window.currentUserUUID)
+      .single();
+
+    if (error) throw error;
+
+    if (user) {
+      window.currentRoundId = user.current_round_id;
+      window.roundStartTime = user.round_start_time;
+      localStorage.setItem("currentRoundId", window.currentRoundId);
+      localStorage.setItem("roundStartTime", window.roundStartTime);
+      updateCoinsUI(user.coins || 0);
+      const balEl = document.getElementById("balance");
+      if (balEl) balEl.textContent = (Number(user.balance) || 0).toFixed(2);
+    }
+  } catch (e) {
+    console.error("同步用户轮次失败", e.message);
+  }
+}
+
 
 /* ====================== 2.读取轮次配置 (每轮单数 & 冷却分钟) ====================== */
 async function loadRoundConfig() {
@@ -52,7 +80,7 @@ async function loadRoundConfig() {
   }
 }
 
-/* ====================== 3.工具函数 ====================== */
+/* ====================== 3.工具函数：生成新轮次 ====================== */
 async function startNewRound() {
   const uuid = crypto.randomUUID();
   window.currentRoundId = uuid;
@@ -60,14 +88,21 @@ async function startNewRound() {
   localStorage.setItem("currentRoundId", uuid);
   localStorage.setItem("roundStartTime", window.roundStartTime);
 
-  // 同步数据库用户表
-  if (window.currentUserId) {
-    await supabaseClient
-      .from("users")
-      .update({ current_round_id: uuid, round_start_time: window.roundStartTime })
-      .eq("id", window.currentUserId);
+  // 同步数据库
+  if (window.currentUserUUID) {
+    try {
+      const { error } = await supabaseClient
+        .from("users")
+        .update({ current_round_id: uuid, round_start_time: window.roundStartTime })
+        .eq("uuid", window.currentUserUUID);
+
+      if (error) throw error;
+    } catch (e) {
+      console.error("新轮次写入数据库失败", e.message);
+    }
   }
 }
+
 /* ====================== 4.获取用户规则产品 ====================== */
 async function getUserRuleProduct(userId, orderNumber) {
   const { data: rules, error } = await supabaseClient
@@ -231,9 +266,9 @@ async function checkPendingLock() {
   }
 }
 
-/* ====================== 11.订单 ====================== */
+/* ====================== 11.下单逻辑 ====================== */
 async function autoOrder() {
-  if (!window.currentUserId) {
+  if (!window.currentUserUUID) {
     alert("请先登录！");
     return;
   }
@@ -243,24 +278,20 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 读取数据库当前用户信息
-    const { data: user } = await supabaseClient
+    // 🔹 拉取最新用户信息和轮次
+    const { data: user, error } = await supabaseClient
       .from("users")
       .select("coins, current_round_id")
-      .eq("id", window.currentUserId)
+      .eq("uuid", window.currentUserUUID)
       .single();
+    if (error || !user) throw new Error("加载用户信息失败");
 
-    if (!user) throw new Error("加载用户信息失败");
-
-    // 使用 UUID 轮次
-    if (!window.currentRoundId) {
-      window.currentRoundId = user.current_round_id || crypto.randomUUID();
-      localStorage.setItem("currentRoundId", window.currentRoundId);
-    }
+    window.currentRoundId = user.current_round_id || crypto.randomUUID();
+    localStorage.setItem("currentRoundId", window.currentRoundId);
 
     const currentRoundId = window.currentRoundId;
 
-    // 检查本轮完成订单数
+    // 🔹 检查本轮完成订单数
     const { data: roundOrders } = await supabaseClient
       .from("orders")
       .select("id,status")
@@ -270,7 +301,6 @@ async function autoOrder() {
     const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
 
     if (completedCount >= window.ORDERS_PER_ROUND) {
-      // 🔹 新轮次
       await startNewRound();
       alert(`本轮已完成，轮次自动升级`);
       ordering = false;
@@ -299,7 +329,7 @@ async function autoOrder() {
       return;
     }
 
-    // 🔹 选择商品
+    // 🔹 随机选择商品并匹配（略，保持原逻辑）
     let product;
     const totalOrdersRes = await supabaseClient
       .from("orders")
@@ -318,11 +348,7 @@ async function autoOrder() {
     }
     if (!product) product = await getRandomProduct();
 
-    // 🔹 随机匹配时间
-    let delaySec = Math.floor(
-      Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)
-    ) + window.MATCH_MIN_SECONDS;
-
+    let delaySec = Math.floor(Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)) + window.MATCH_MIN_SECONDS;
     const matchingEndTime = Date.now() + delaySec * 1000;
     localStorage.setItem("matchingEndTime", matchingEndTime);
     localStorage.setItem("matchingProductId", product.id);
