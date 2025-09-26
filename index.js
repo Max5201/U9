@@ -81,9 +81,8 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
     return;
   }
 
-  // 生成平台账号和 UUID
   const platformAccount = generatePlatformAccount();
-  const uuid = crypto.randomUUID();
+  const currentRoundId = crypto.randomUUID();
 
   // 插入新用户
   const { data, error } = await supabaseClient
@@ -94,8 +93,7 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
       coins: 0,
       balance: 0,
       platform_account: platformAccount,
-      uuid,
-      current_round_id: uuid, // 初始轮次 UUID
+      current_round_id: currentRoundId,
       round_start_time: Date.now()
     })
     .select()
@@ -110,9 +108,9 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
-  localStorage.setItem("currentUserUUID", data.uuid);
-  localStorage.setItem("currentRoundId", data.current_round_id);
-  localStorage.setItem("roundStartTime", data.round_start_time);
+  localStorage.setItem("currentUserUUID", currentRoundId);
+  window.currentUserUUID = currentRoundId;
+  window.currentRoundId = currentRoundId;
 
   alert("注册成功！");
   window.location.href = "frontend/HOME.html";
@@ -132,7 +130,7 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 
   const { data, error } = await supabaseClient
     .from("users")
-    .select("id, username, password, platform_account, uuid, current_round_id, round_start_time")
+    .select("id, username, password, platform_account, uuid, current_round_id")
     .eq("username", username)
     .maybeSingle();
 
@@ -149,13 +147,23 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     return;
   }
 
-  // 保存到 localStorage
+  // 初始化 UUID 和轮次
+  const uuid = data.current_round_id || crypto.randomUUID();
+  window.currentUserUUID = data.uuid || uuid;
+  window.currentRoundId = uuid;
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
-  localStorage.setItem("currentUserUUID", data.uuid);
-  localStorage.setItem("currentRoundId", data.current_round_id || crypto.randomUUID());
-  localStorage.setItem("roundStartTime", data.round_start_time || Date.now());
+  localStorage.setItem("currentUserUUID", window.currentUserUUID);
+  localStorage.setItem("currentRoundId", window.currentRoundId);
+
+  // 如果数据库没有 current_round_id，更新
+  if (!data.current_round_id) {
+    await supabaseClient
+      .from("users")
+      .update({ current_round_id: uuid, round_start_time: Date.now() })
+      .eq("uuid", window.currentUserUUID);
+  }
 
   alert("登录成功！");
   window.location.href = "frontend/HOME.html";
