@@ -2,8 +2,6 @@
 window.currentUserId = localStorage.getItem("currentUserId");
 window.currentUsername = localStorage.getItem("currentUser");
 window.currentUserUUID = localStorage.getItem("currentUserUUID"); // 新增 UUID
-window.currentRoundId = localStorage.getItem("currentRoundId");   // 当前轮次
-window.roundStartTime = localStorage.getItem("roundStartTime");   // 当前轮次开始时间
 
 let ordering = false;      // 下单中的并发保护
 let completing = false;    // 完成订单中的并发保护
@@ -272,15 +270,21 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 🔹 开启新轮次（如不存在）
-    if (!window.currentRoundId) startNewRound();
+    // 读取数据库当前轮次
+    const { data: user } = await supabaseClient
+      .from("users")
+      .select("current_round, coins")
+      .eq("id", window.currentUserId)
+      .single();
 
-    // 🔹 检查本轮已完成订单数
+    let currentRound = Number(user?.current_round || 1);
+
+    // 检查本轮完成订单数
     const { data: roundOrders } = await supabaseClient
       .from("orders")
       .select("id,status")
       .eq("user_id", window.currentUserId)
-      .eq("round_id", window.currentRoundId);
+      .eq("round_id", currentRound);
 
     const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
     if (completedCount >= window.ORDERS_PER_ROUND) {
