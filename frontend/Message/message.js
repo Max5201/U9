@@ -437,7 +437,7 @@ async function finalizeMatchedOrder(product) {
         total_price: price,
         profit: profit,
         status: "pending",
-        round_id: window.currentRoundId,
+        round_id: currentRound,
       })
       .select(`id, total_price, profit, status, created_at, products ( name, profit )`)
       .single();
