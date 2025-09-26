@@ -695,3 +695,15 @@ function updateCoinsUI(coins) {
   const coinsEl = document.getElementById("ordercoins");
   if (coinsEl) coinsEl.textContent = (Number(coins) || 0).toFixed(2);
 }
+
+/* ====================== 22.显示/隐藏下单按钮状态 ====================== */
+function setOrderBtnDisabled(disabled, text = "", tooltip = "") {
+  const btn = document.getElementById("autoOrderBtn");
+  if (btn) {
+    btn.disabled = !!disabled;
+    if (text) btn.textContent = text;
+    else btn.textContent = "🎲 一键刷单";
+    if (tooltip) btn.title = tooltip;
+    else btn.title = "";
+  }
+}
