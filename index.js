@@ -102,7 +102,8 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
       coins: 0,
       balance: 0,
       platform_account: platformAccount,
-      uuid
+      uuid,
+      session_token: null
     })
     .select()
     .single();
@@ -116,14 +117,14 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
-  localStorage.setItem("currentUserUUID", data.uuid); // 保存 UUID
+  localStorage.setItem("currentUserUUID", data.uuid);
 
   alert("注册成功！");
   window.location.href = "frontend/HOME.html";
 });
 
 // =======================
-// 登录逻辑
+// 登录逻辑 (带 session_token)
 // =======================
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const username = document.getElementById("loginUsername").value.trim();
@@ -153,11 +154,26 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     return;
   }
 
+  // === 生成新的 session_token ===
+  const sessionToken = generateUUID();
+
+  // 更新数据库中的 session_token
+  const { error: updateErr } = await supabaseClient
+    .from("users")
+    .update({ session_token: sessionToken })
+    .eq("id", data.id);
+
+  if (updateErr) {
+    alert("更新 session 失败: " + updateErr.message);
+    return;
+  }
+
   // 保存到 localStorage
   localStorage.setItem("currentUserId", data.id);
   localStorage.setItem("currentUser", data.username);
   localStorage.setItem("platformAccount", data.platform_account);
-  localStorage.setItem("currentUserUUID", data.uuid); // 保存 UUID
+  localStorage.setItem("currentUserUUID", data.uuid);
+  localStorage.setItem("sessionToken", sessionToken);
 
   alert("登录成功！");
   window.location.href = "frontend/HOME.html";
