@@ -125,7 +125,6 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   window.location.href = "frontend/HOME.html";
 });
 
-
 // =======================
 // 登录逻辑 (带 session_token)
 // =======================
