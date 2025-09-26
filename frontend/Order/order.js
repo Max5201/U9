@@ -2,17 +2,16 @@
 window.currentUserId = localStorage.getItem("currentUserId");
 window.currentUsername = localStorage.getItem("currentUser");
 window.currentUserUUID = localStorage.getItem("currentUserUUID"); // 新增 UUID
-window.currentRoundId = localStorage.getItem("currentRoundId");   // 当前轮次
+window.currentRoundId = localStorage.getItem("currentRoundId");   // 当前轮次 UUID
 window.roundStartTime = localStorage.getItem("roundStartTime");   // 当前轮次开始时间
 
-let ordering = false;      // 下单中的并发保护
-let completing = false;    // 完成订单中的并发保护
-let exchanging = false;    // Balance <-> Coins 兑换中的并发保护
-let cooldownTimer = null;  // 冷却倒计时
+let ordering = false;
+let completing = false;
+let exchanging = false;
+let cooldownTimer = null;
 
-// 默认轮次配置
 window.ORDERS_PER_ROUND = 3;
-window.ROUND_DURATION = 5 * 60 * 1000; // 毫秒
+window.ROUND_DURATION = 5 * 60 * 1000;
 
 if (!window.supabaseClient) {
   console.error("❌ supabaseClient 未初始化！");
@@ -54,49 +53,21 @@ async function loadRoundConfig() {
 }
 
 /* ====================== 3.工具函数 ====================== */
-function setOrderBtnDisabled(disabled, reason = "", cooldownText = "") {
-  const btn = document.getElementById("autoOrderBtn");
-  if (btn) {
-    btn.disabled = disabled;
-    btn.title = reason || "";
-    btn.textContent = disabled ? `🎲 一键刷单（不可用）` : "🎲 一键刷单";
-  }
-  const cdEl = document.getElementById("cooldownDisplay");
-  if (cdEl) cdEl.textContent = cooldownText;
-}
-
-function updateCoinsUI(coinsRaw) {
-  const coins = Number(coinsRaw) || 0;
-  const ob = document.getElementById("ordercoins");
-  if (ob) ob.textContent = coins.toFixed(2);
-
-  if (coins < 0) {
-    setOrderBtnDisabled(true, `金币为负（欠款 ¥${Math.abs(coins).toFixed(2)}）`);
-  } else {
-    setOrderBtnDisabled(false);
-  }
-}
-
-function formatTime(sec) {
-  const h = String(Math.floor(sec / 3600)).padStart(2, "0");
-  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, "0");
-  const s = String(sec % 60).padStart(2, "0");
-  return `${h}:${m}:${s}`;
-}
-
-function isRoundExpired() {
-  if (!window.roundStartTime) return true;
-  return (Date.now() - Number(window.roundStartTime)) > window.ROUND_DURATION;
-}
-
-function startNewRound() {
+async function startNewRound() {
   const uuid = crypto.randomUUID();
   window.currentRoundId = uuid;
   window.roundStartTime = Date.now();
   localStorage.setItem("currentRoundId", uuid);
   localStorage.setItem("roundStartTime", window.roundStartTime);
-}
 
+  // 同步数据库用户表
+  if (window.currentUserId) {
+    await supabaseClient
+      .from("users")
+      .update({ current_round_id: uuid, round_start_time: window.roundStartTime })
+      .eq("id", window.currentUserId);
+  }
+}
 /* ====================== 4.获取用户规则产品 ====================== */
 async function getUserRuleProduct(userId, orderNumber) {
   const { data: rules, error } = await supabaseClient
@@ -272,34 +243,41 @@ async function autoOrder() {
   try {
     await loadRoundConfig();
 
-    // 🔹 开启新轮次（如不存在）
-    if (!window.currentRoundId) startNewRound();
+    // 读取数据库当前用户信息
+    const { data: user } = await supabaseClient
+      .from("users")
+      .select("coins, current_round_id")
+      .eq("id", window.currentUserId)
+      .single();
 
-    // 🔹 检查本轮已完成订单数
+    if (!user) throw new Error("加载用户信息失败");
+
+    // 使用 UUID 轮次
+    if (!window.currentRoundId) {
+      window.currentRoundId = user.current_round_id || crypto.randomUUID();
+      localStorage.setItem("currentRoundId", window.currentRoundId);
+    }
+
+    const currentRoundId = window.currentRoundId;
+
+    // 检查本轮完成订单数
     const { data: roundOrders } = await supabaseClient
       .from("orders")
       .select("id,status")
       .eq("user_id", window.currentUserId)
-      .eq("round_id", window.currentRoundId);
+      .eq("round_id", currentRoundId);
 
     const completedCount = roundOrders?.filter(o => o.status === "completed").length || 0;
+
     if (completedCount >= window.ORDERS_PER_ROUND) {
-      const cooldown = await checkOrderCooldown();
-      if (cooldown.next_allowed) {
-        startCooldownTimer(cooldown.next_allowed, "本轮已完成全部订单，冷却中，请等待");
-      }
-      alert("本轮已完成全部订单，进入冷却…");
+      // 🔹 新轮次
+      await startNewRound();
+      alert(`本轮已完成，轮次自动升级`);
       ordering = false;
       return;
     }
 
-    // 🔹 获取用户 Coins
-    const { data: user } = await supabaseClient
-      .from("users")
-      .select("coins")
-      .eq("id", window.currentUserId)
-      .single();
-    const coins = Number(user?.coins || 0);
+    const coins = Number(user.coins || 0);
     if (coins < 50) {
       alert("你的余额不足，最少需要 50 coins");
       setOrderBtnDisabled(false);
@@ -307,7 +285,7 @@ async function autoOrder() {
       return;
     }
 
-    // 🔹 检查未完成订单
+    // 检查未完成订单
     const { data: pend } = await supabaseClient
       .from("orders")
       .select("id")
@@ -321,7 +299,7 @@ async function autoOrder() {
       return;
     }
 
-    // 🔹 选择商品（规则或随机）
+    // 🔹 选择商品
     let product;
     const totalOrdersRes = await supabaseClient
       .from("orders")
@@ -340,22 +318,20 @@ async function autoOrder() {
     }
     if (!product) product = await getRandomProduct();
 
-    // 🔹 生成随机匹配时间
+    // 🔹 随机匹配时间
     let delaySec = Math.floor(
       Math.random() * (window.MATCH_MAX_SECONDS - window.MATCH_MIN_SECONDS + 1)
     ) + window.MATCH_MIN_SECONDS;
 
-    // 🔹 保存匹配结束时间和产品信息（本地存储，刷新保持状态）
     const matchingEndTime = Date.now() + delaySec * 1000;
     localStorage.setItem("matchingEndTime", matchingEndTime);
     localStorage.setItem("matchingProductId", product.id);
 
-    // 🔹 启动匹配倒计时
     startMatchingCountdown(product, delaySec);
 
   } catch (e) {
     alert(e.message || "下单失败");
-    setMatchingState(false); // 出错也隐藏 GIF
+    setMatchingState(false);
   } finally {
     ordering = false;
   }
@@ -418,8 +394,7 @@ async function finalizeMatchedOrder(product) {
     let coins = Number(user?.coins || 0);
 
     const price = Number(product.price) || 0;
-    const profitRatio = Number(product.profit) || 0;
-    const profit = +(price * profitRatio).toFixed(2);
+    const profit = +(price * Number(product.profit || 0)).toFixed(2);
     const tempCoins = coins - price;
 
     await supabaseClient
@@ -451,21 +426,18 @@ async function finalizeMatchedOrder(product) {
   }
 }
 
-// 页面加载时恢复匹配状态
-document.addEventListener("DOMContentLoaded", restoreMatchingIfAny);
-
 /* ====================== 15.冷却倒计时函数 ====================== */
 function startCooldownTimer(nextAllowed, messagePrefix = "冷却中，请等待") {
   if (!nextAllowed) return;
 
-  const tick = () => {
+  const tick = async () => {
     const sec = Math.ceil((new Date(nextAllowed).getTime() - Date.now()) / 1000);
     if (sec <= 0) {
       clearInterval(cooldownTimer);
       setOrderBtnDisabled(false, "", "");
-      startNewRound();
-      updateRoundProgress();
-      loadRecentOrders();
+      await startNewRound();         // ✅ 新轮次
+      await updateRoundProgress();
+      await loadRecentOrders();
     } else {
       setOrderBtnDisabled(true, `${messagePrefix} ${formatTime(sec)}`, `冷却剩余时间：${formatTime(sec)}`);
     }
